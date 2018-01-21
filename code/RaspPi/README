@@ -1,0 +1,14 @@
+This is the collection of custom python code that runs on the Raspberry Pi
+part of the system. (See system diagram in "docs".)
+
+At this point, it is completely a works in progress.  It runs as is without errors.
+
+Functionality (at least):
++ reads the locally connected motion detector
++ controls a locally connected solid state relay for lights
++ publishes locally connected sensors to the mosquitto data broker using mqtt
++ can respond to a change in the light mqtt topic (from NodeRed for example)
++ maintains a local copy of all of the data on the broker (e.g. remote module temp, humidity)
+
+Now that all of the data is flowing, I'll focus on getting some automatic alarming funcitons
+working.
