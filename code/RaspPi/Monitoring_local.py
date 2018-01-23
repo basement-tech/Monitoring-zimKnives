@@ -24,6 +24,13 @@
 #    but WITHOUT ANY WARRANTY; without even the implied warranty of
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  Use at your own risk.
 #
+# v0.4:
+# + separated the Env and Parm classes into a separate file
+#   (added arguments to Env)
+# + added structure for alarm stimulus/response processing
+#   (demonsrated with motion->light = on ... cool!)
+# + added the first simple alarm stimulus/response: motion/light
+#
 # v0.3:
 # + enhanced the logging a bit, including logging to a file
 # + added the parm and env class to organize the data
@@ -57,6 +64,7 @@ import logging
 import sys
 import threading
 from Monitoring_conf import conf
+from MonitoringParameters import *
 
 # Notes
 # time.time() returns microseconds
@@ -73,108 +81,8 @@ LOOP_DELAY = 2.0   # number of seconds of delay in the main loop
 light_status = False  # keep the requested status of the light
 
 ###########
-# Classes
+# Local Classes
 ###########
-
-class Parm():
-    """ class to hold a parameter and it's meta data """
-
-    # subscribe/publish flag values
-    SUB = 1
-    PUB = 2
-
-    # last changer flag values
-    LOCAL = 1
-    REMOTE = 2
-
-    def __init__(self, label, value, units, when, direction, topic, acquire=lambda x: None, last_chgr=LOCAL):
-        self.label = label # human readable label
-        self.value = value # actual value of the parameter
-        self.units = units # string version of units
-        self.when = when   # timestamp for the data value
-        self.direction = direction # mqtt pub or sub
-        self.topic = topic # mqtt topic
-        self.acquire = acquire # function used to acquire locally hosted parameters
-                               # Note: some parameters are aquired by asynchronous callbacks
-        self.last_chgr = last_chgr # who changed the parameter value last
-
-class Env():
-    """ describe the environmental and control parameters, and provide some convenient functions """
-
-    # flag so that we only subscribe once
-    subscribed = False
-    
-    def __init__(self):
-        # temp, humidity, combustable gasses from the remote environmental sensor
-        self.temp     = Parm("temp",     0.0,   "deg C", "00:00:00", Parm.SUB, "zk-env/temp")
-        self.humidity = Parm("humidity", 0.0,   "\%",    "00:00:00", Parm.SUB, "zk-env/humidity")
-        self.gas      = Parm("gas",      0.0,   "units", "00:00:00", Parm.SUB, "zk-env/gas")
-        # light and auto switch override command parameters
-        self.o_light  = Parm("o_light",  False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_light")
-        self.o_auto   = Parm("o_auto",   False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_auto")
-
-        # motion sensor, panic button, auto key switch hosted by the pi
-        self.motion   = Parm("motion",   False, "t/f",   "00:00:00", Parm.PUB, "zk-env/motion")
-        self.panicbut = Parm("panicbut", False, "t/f",   "00:00:00", Parm.PUB, "zk-env/panicbut")
-        self.auto     = Parm("auto",     False, "t/f",   "00:00:00", Parm.PUB, "zk-env/auto")
-        # local control of the light (usually automatic)
-        self.light    = Parm("light",    False, "t/f",   "00:00:00", Parm.PUB, "zk-env/light")
-
-        # used to loop through the parameters in other functions
-        self.parm_list = [self.temp, self.humidity, self.gas, self.o_light, self.o_auto,
-                          self.motion, self.panicbut, self.light, self.auto]
-
-    def subscribe(self, broker):
-        """ subscribe to those parameters indicating so ... only once """
-        if self.subscribed == False:
-            for attr in self.parm_list:
-                if attr.direction == attr.SUB:
-                    logging.debug("Subscribing: "+attr.label)
-                    mqtt_client.subscribe(attr.topic)
-            self.subscribed = True
-        else:
-            logging.debug("Already subscribed ... ignoring")
-        
-
-    def data_sync(self, broker):
-        """ sync all of the local data with the data broker """
-
-        # publish the data values that this program is sourcing
-        for attr in self.parm_list:
-            if attr.direction == attr.PUB:
-                logging.debug("Publishing: "+attr.label)
-                mqtt_client.publish(attr.topic, attr.value)
-
-        # note that the subscribed values are updated asynchronously by on_message()
-                
-
-
-    def set_parameter(self, topic, value):
-        """ set a single parameter value in the class attibute """
-
-        found = False
-        
-        for attr in self.parm_list:
-            if attr.topic == topic:
-                attr.value = value
-                found = True
-
-        if found == False:
-            logging.debug("Can't set value for "+topic)
-
-        return found
-
-    def get_topic(self, label):
-        """ find the topic for the provided label """
-
-        for attr in self.parm_list:
-            if attr.label == label:
-                return attr.topic
-
-        return ""
-                
-
-
                 
 ###########
 # Functions and callbacks
@@ -240,7 +148,7 @@ def motion_detected(channel):
 
 ### alarming effects/responses ... JUST GETTING STARTED ON THIS PART ... NOT WORKING YET
 
-class ManageAlarms():
+class ManageAlarms:
     """ Manage all of the automatic alarming logic """
 
     # keep track of which was the last transition and set it appropriately
@@ -249,27 +157,82 @@ class ManageAlarms():
     
 
     def __init__(self):
+        # used to loop through the stimulus'es to be processed
+        self.stimulus_list = [self.motion_detected]
+
+
+    ### stimulus processing
+
+    def motion_detected(self):
+        """ process the motion detection capability """
+
+        logging.debug("Processing motion")
+        
+        if zkshop.motion.value == True:
+            self.light_it_up()
+        else:
+            self.light_it_up(True)
+
+
+
+    def process_stimuluses(self):
+        """ loop through the list and process the stimuluses """
+        for func in self.stimulus_list:
+            func()
+
+    def process_overrides(self):
+        """ take the appropriate actions based on the override values """
+        # use the zkshop.ovrd_list[]
         pass
     
-    def send_alarm_msgs(self):
+    ### alarming responses
+    
+    def send_alarm_msgs(self, holdoff = 0):
         """ send text or email messages to the configured list """
         pass
 
-    def say_something(self):
+    def say_something(self, holdoff = 0):
         """ use the local text to voice or play a wav file """
+                # say something if a motion event is active
+#        if motion_event == True:
+#            p1 = subprocess.Popen(["echo", "I see you"], stdout = subprocess.PIPE)
+#            p2 = subprocess.Popen(["festival", "--tts"], stdin=p1.stdout, stdout = subprocess.PIPE)
+#            p1.stdout.close()
+#            output,err = p2.communicate()
         pass
 
-    def make_noise(self):
+    def make_noise(self, reset = False, holdoff = 0):
        """ activate the local siren """
        pass
 
-    def light_it_up(self):
-        """ turn on the lights through the SSR channel """
-#        if zkshop.o_light.value 
-#        zkshop.light.value = True
-#        GPIO.output(SSR_PIN, zkshop.light.value)
-#        logging.debug("o_light = " + str(zkshop.o_light.value))
+    def light_it_up(self, reset = False, holdoff = 0):
+        """ implement local control of the light; respect the remote override """
+
+        # reset requested
+        if reset == True:
+            logging.debug("local reset of light/SSR requested")
+            # check the override state
+            if zkshop.o_light.value == True :
+                logging.debug("... ignored")
+            else:
+                zkshop.light.value = False
+                
+        # this code is asking for the light on (e.g. alarm event) ... do it
+        else:
+            zkshop.light.value = True
+
+        logging.debug("setting light/SSR to: " + str(zkshop.light.value))
+        GPIO.output(conf["SSR_PIN"], zkshop.light.value)
+
+
+    def secure_from_auto(self):
+        """ clean things up after auto alarming is disabled """
         pass
+
+    def start_auto(self):
+        """ cleanly start up auto-alarming; return outputs to default """
+        pass
+
         
 ### end of class ManageAlarms()
 
@@ -321,7 +284,7 @@ mqtt_client.on_message = on_message
 mqtt_client.loop_start()
 
 # local storage of parameters
-zkshop = Env()
+zkshop = Env(logging, mqtt_client)
 zkshop.data_sync(mqtt_client)
 
 # subscribe to those which will be read
@@ -343,6 +306,9 @@ GPIO.output(conf["SSR_PIN"], False)
 #
 GPIO.add_event_detect(conf["MOTION_PIN"], GPIO.BOTH, callback=motion_detected)
 
+# Instantiate the alarm management
+manage_alarms = ManageAlarms()
+
 
 
 #############
@@ -356,9 +322,12 @@ try:
         logging.debug("Main Loop ... Syncing data")
         zkshop.data_sync(mqtt_client)
 
+        # process the stimuluses
+        manage_alarms.process_stimuluses()
+        
         # just a test
-        GPIO.output(conf["SSR_PIN"], zkshop.o_light.value)
-        logging.debug("o_light = " + str(zkshop.o_light.value))
+#        GPIO.output(conf["SSR_PIN"], zkshop.o_light.value)
+#        logging.debug("o_light = " + str(zkshop.o_light.value))
 
         # Testing the SSR
 #        GPIO.output(SSR_PIN, motion_event)
