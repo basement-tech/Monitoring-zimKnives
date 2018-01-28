@@ -34,6 +34,8 @@
 # Env() sets up.
 #
 
+import RPi.GPIO as GPIO
+from Monitoring_conf import conf
 
 class Parm:
     """ class to hold a parameter and it's meta data """
@@ -46,15 +48,19 @@ class Parm:
     LOCAL = 1
     REMOTE = 2
 
-    def __init__(self, label, value, units, when, direction, topic, acquire=lambda x: None, last_chgr=LOCAL):
+    def __init__(self, label, value, pvalue, units, when, direction, topic, event = False, jflag = False, physical=lambda x: None, io_pin = -1, last_chgr=LOCAL):
         self.label = label # human readable label
         self.value = value # actual value of the parameter
+        self.pvalue = pvalue # previous value; used for s/w edge detection
         self.units = units # string version of units
         self.when = when   # timestamp for the data value
         self.direction = direction # mqtt pub or sub
         self.topic = topic # mqtt topic
-        self.acquire = acquire # function used to acquire locally hosted parameters
+        self.event = event # was an asynchronous event received
+        self.jflag = jflag # decode incoming as json or not
+        self.physical = physical # function used to acquire/set locally hosted parameters
                                # Note: some parameters are aquired by asynchronous callbacks
+        self.io_pin = io_pin # in the case of physical i/o
         self.last_chgr = last_chgr # who changed the parameter value last
 
 class Env:
@@ -66,26 +72,56 @@ class Env:
     def __init__(self, logging, mqtt_client):
         self.logging = logging
         self.mqtt_client = mqtt_client
-        
+
+        #
+        # Note: pvalue may not be maintained for all parameters
+        #       (definitely not for o_auto and o_light)
+        #
+        #       only o_auto and o_light reset the event flag
+        #
+        #                    label       value  pvalue  units     when      direction  topic             event   jflag   physical       pin
+        #                                                                                               (false) (false)   (None)        (-1)
+        #                    -----       -----  ------  -----     ----      ---------  -----             -----  -----    --------       ---
         # temp, humidity, combustable gasses from the remote environmental sensor
-        self.temp     = Parm("temp",     0.0,   "deg C", "00:00:00", Parm.SUB, "zk-env/temp")
-        self.humidity = Parm("humidity", 0.0,   "\%",    "00:00:00", Parm.SUB, "zk-env/humidity")
-        self.gas      = Parm("gas",      0.0,   "units", "00:00:00", Parm.SUB, "zk-env/gas")
+        self.temp     = Parm("temp",     0.0,   0.0,   "deg C", "00:00:00", Parm.SUB, "zk-env/temp",     False,  True)
+        self.humidity = Parm("humidity", 0.0,   0.0,   "\%",    "00:00:00", Parm.SUB, "zk-env/humidity", False,  True)
+        self.gas      = Parm("gas",      0.0,   0.0,   "units", "00:00:00", Parm.SUB, "zk-env/gas",      False,  True)
         # light and auto switch override command parameters
-        self.o_light  = Parm("o_light",  False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_light")
-        self.o_auto   = Parm("o_auto",   False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_auto")
+        self.o_light  = Parm("o_light",  False, False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_light")
+        self.o_auto   = Parm("o_auto",   False, False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_auto")
 
         # motion sensor, panic button, auto key switch hosted by the pi
-        self.motion   = Parm("motion",   False, "t/f",   "00:00:00", Parm.PUB, "zk-env/motion")
-        self.panicbut = Parm("panicbut", False, "t/f",   "00:00:00", Parm.PUB, "zk-env/panicbut")
-        self.auto     = Parm("auto",     False, "t/f",   "00:00:00", Parm.PUB, "zk-env/auto")
+        self.motion   = Parm("motion",   False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/motion")
+        self.panicbut = Parm("panicbut", False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/panicbut")
+        self.auto     = Parm("auto",     False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/auto")
         # local control of the light (usually automatic)
-        self.light    = Parm("light",    False, "t/f",   "00:00:00", Parm.PUB, "zk-env/light")
+        self.light    = Parm("light",    False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/light",    False, False, self.write_pin, conf["SSR_PIN"])
 
         # used to loop through the parameters in other functions
         self.parm_list = [self.temp, self.humidity, self.gas, self.o_light, self.o_auto,
                           self.motion, self.panicbut, self.light, self.auto]
 
+        # BCM numbering scheme for Pi pins
+        GPIO.setmode(GPIO.BCM)
+
+        #
+        # setup the motion control input
+        #
+        GPIO.setup(conf["MOTION_PIN"], GPIO.IN)
+        GPIO.setup(conf["SSR_PIN"], GPIO.OUT)
+        GPIO.output(conf["SSR_PIN"], False)
+
+        #
+        # There seems to be a bug where the edge detection triggers on both
+        # edges.  Compensate in the ISR.
+        #
+        GPIO.add_event_detect(conf["MOTION_PIN"], GPIO.BOTH, callback=self.motion_detected)
+
+
+### this section has the code to manipulate the parameter data structure
+### and interact with the MQTT dat broker
+### (code for physical i/o below)
+        
     def subscribe(self, broker):
         """ subscribe to those parameters indicating so ... only once """
         if self.subscribed == False:
@@ -108,11 +144,32 @@ class Env:
                 self.mqtt_client.publish(attr.topic, attr.value)
 
         # note that the subscribed values are updated asynchronously by on_message()
+
+    def get_parameter(self, topic):
+        """ get the parameter instance for the provided topic """
                 
+        for attr in self.parm_list:
+            if attr.topic == topic:
+                return attr
+
+        self.logging.error("Can't find topic: "+topic)
+        return None
+    
+    def get_parameter_type(self, topic):
+        """ get the type of the parameter by topic  """
+        
+        for attr in self.parm_list:
+            if attr.topic == topic:
+                return type(attr.value)
+
+        self.logging.error("Can't find topic: "+topic)
+        return type(None)
 
 
     def set_parameter(self, topic, value):
-        """ set a single parameter value in the class attibute """
+        """ set a single parameter value in the class attibute
+            return False if topic not found
+        """
 
         found = False
         
@@ -134,7 +191,74 @@ class Env:
                 return attr.topic
 
         return ""
-                
+
+    def display_parameters(self):
+        """ for debugging, display all parameter values """
+
+        self.logging.debug("============")
+        for attr in self.parm_list:
+            self.logging.debug(attr.label + " = " + str(attr.value))
+        self.logging.debug("============")
+
+            
+### below is the stuff to handle the physical i/o hosted on the pi
+### functions to acquire data or respond to interrupt driven parameters
+
+    # Define callbacks for i/o changes
+    def motion_detected(self, channel):
+        """ set the local motion_event flag """
+
+        # read the input to determine which edge
+        # do a little software debounce and double-check the value
+
+        # is the detector indicating motion?
+        if GPIO.input(conf["MOTION_PIN"]) == True:
+            self.logging.debug("Rising edge detected on %s" %channel)
+            
+            # was the last look indicating no motion (i.e. this is a clean transition)
+            if self.motion.value == False:
+                self.motion.pvalue = self.motion.value
+                self.motion.value = True
+            # if we were already in a "motion=yes" state, must have been noise
+            else:
+                self.logging.debug("Noise")
+
+        # edge change direction indicated : back to no motion
+        else:
+            self.logging.debug("Falling edge on %s" %channel)
+            # clean transition
+            if self.motion.value == True:
+                self.motion.pvalue = self.motion.value
+                self.motion.value = False
+            # noise
+            else:
+                self.logging.debug("Noise")
+
+    ### end of motion_detected()
+     
+    def physical(self):
+        """ execute the functions to interact with physical i/o lines """
+
+        for attr in self.parm_list:
+            attr.physical(attr)
+
+
+    def write_pin(self, attr):
+        """ output a value of the parameter to a physical i/o pin """
+        
+        self.logging.debug("Setting " + attr.label + " to " + str(attr.value) + " on pin " + str(attr.io_pin))
+        GPIO.output(attr.io_pin, attr.value)
+
+    def read_pin(self, attr):
+        """ input a value of the parameter to a physical i/o pin """
+        
+        self.logging.debug("Setting " + attr.label + " to " + str(attr.value) + " from pin " + str(attr.io_pin))
+        attr.pvalue = attr.value
+        GPIO.input(attr.io_pin, attr.value)
+
+    def cleanup(self):
+        GPIO.cleanup()
+
 
 
                 
