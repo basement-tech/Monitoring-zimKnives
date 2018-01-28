@@ -11,5 +11,18 @@ Functionality (at least):
 + maintains a local copy of all of the data on the broker (e.g. remote module temp, humidity)
 + first simple motion->light alarm response and architecture to support more
 
+# v0.5:
+# + added conf["LOCATION"] to be more specific with messages
+# + added sending email messages on motion event ... it works !
+# + added the holdoff timer for the motion event ... cool !
+# + added periodic notification of t/h/g values
+# + corrected bug where subscribed parameters were all being set as raw strings
+# + moved all of the hardware i/o to the MonitoringParameters Env() class
+# + made json decoding option in the on_message method
+# + fixed a bug using bool() with strings in on_message
+# + finish up the override logic for light and auto
+#
+
+
 Now that all of the data is flowing, I'll focus on getting some automatic alarming funcitons
 working.
