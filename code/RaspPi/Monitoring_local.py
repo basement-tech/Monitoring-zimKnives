@@ -24,6 +24,10 @@
 #    but WITHOUT ANY WARRANTY; without even the implied warranty of
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  Use at your own risk.
 #
+# v0.6:
+#
+# + created timer class for reusability and auto-False cleanup
+#
 # v0.5:
 # + added conf["LOCATION"] to be more specific with messages
 # + added sending email messages on motion event ... it works !
@@ -59,13 +63,15 @@
 # + very basic functionality and some experimentation
 #
 # Pending:
-# + need to clean up properly from auto mode ... especially timers
+# + clean up the timer threads o ^c better ... mostly for development
 # + add thresholds for t/h/g to change from notifications to alarm
 # + command line arguments for logging level, filename, etc
 # + implement mqtt.reconnect() logic for lost connection
 # + configure the location and use to create the mqtt topics
 #   ... make the data class instance name a bit more generic
 # + maybe collapse process_overrides() and process_stimuluses() into just stimuluses
+# + write to the broker the status topics: light and auto first
+# + maybe use motion.event instead of separate motion_event
 #
 
 import paho.mqtt.client as mqtt
@@ -147,6 +153,26 @@ def on_message(mqtt_client, userdata, message):
 
 ### end on_message()
 
+# a little class to manage a single, global timer
+class LocalTimer:
+    """ make the timer available more globally and terminate easier """
+
+    def __init__(self, interval, function, args=[], kwargs={}):
+        self.interval = interval
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+
+    def create(self):
+        self.timer = threading.Timer(self.interval, self.function, self.args, self.kwargs)
+        self.timer.daemon = True  # helps with ^c behavior
+
+    def start(self):
+        self.timer.start()
+
+    def cancel(self):
+        self.timer.cancel()
+        
 
 ### alarming effects/responses ... JUST GETTING STARTED ON THIS PART ... NOT WORKING YET
 
@@ -164,6 +190,9 @@ class ManageAlarms:
 
         # keep track of when the temp, humidity and gas message was sent
         self.thg_sent = False
+
+        # instantiate the local timer class to be used over and over
+        self.mtimer = LocalTimer(conf["MOTION_HOLDOFF"], self.reset_motion_event)
 
 
     ### stimulus processing functions
@@ -183,9 +212,8 @@ class ManageAlarms:
                 if zkshop.motion.value == True:
                     self.light_it_up()
                     self.send_alarm_msgs("Motion detected at " + conf["LOCATION"])
-                    t = threading.Timer(conf["MOTION_HOLDOFF"], self.reset_motion_event)
-                    t.daemon = True # helps with ^c behavior
-                    t.start()
+                    self.mtimer.create()
+                    self.mtimer.start()
                     self.motion_event = True
                 # end motion event    
                 else:
@@ -258,6 +286,7 @@ class ManageAlarms:
             elif zkshop.o_auto.value == False:
                 logging.info("override commanded auto off ... doing it")
                 zkshop.auto.value = False
+                self.secure_from_auto()
             else:
                 logging.error("strange value received for auto override ... ignored")
 
@@ -305,9 +334,11 @@ class ManageAlarms:
 #            output,err = p2.communicate()
         pass
 
+
     def make_noise(self, reset = False, holdoff = 0):
        """ activate the local siren """
        pass
+
 
     def light_it_up(self, reset = False, holdoff = 0):
         """ implement local control of the light; respect the remote override """
@@ -326,16 +357,14 @@ class ManageAlarms:
             zkshop.light.value = True
 
 
-
-
     def secure_from_auto(self):
         """ clean things up after auto alarming is disabled """
         # end all events in progress/reset alarm event timers
-        pass
+        self.motion_event = False
+        self.mtimer.cancel()
 
     def start_auto(self):
-        """ cleanly start up auto-alarming; return outputs to default """
-        
+        """ cleanly start up auto-alarming; return outputs to default """        
         pass
 
         
