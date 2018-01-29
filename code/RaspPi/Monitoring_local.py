@@ -27,6 +27,10 @@
 # v0.6:
 #
 # + created timer class for reusability and auto-False cleanup
+# + added on_disconnect, callback for mqtt broker: attempt reconnect in main loop
+# + added a mqtt_con_status and use it to try to reconnect if connection is lost
+# + had to add catching of ConnectionRefusedError exception in order to keep things moving
+#    on MQTT conneciton attempt (testing by first killing mosquitto data broker) ... cool !
 #
 # v0.5:
 # + added conf["LOCATION"] to be more specific with messages
@@ -66,11 +70,9 @@
 # + clean up the timer threads o ^c better ... mostly for development
 # + add thresholds for t/h/g to change from notifications to alarm
 # + command line arguments for logging level, filename, etc
-# + implement mqtt.reconnect() logic for lost connection
 # + configure the location and use to create the mqtt topics
 #   ... make the data class instance name a bit more generic
 # + maybe collapse process_overrides() and process_stimuluses() into just stimuluses
-# + write to the broker the status topics: light and auto first
 # + maybe use motion.event instead of separate motion_event
 #
 
@@ -95,6 +97,9 @@ import json
 # Behavioral constants
 LOOP_DELAY = 2.0   # number of seconds of delay in the main loop
 
+# keep track of the mqtt broker connection status
+mqtt_con_status = False
+MQTT_ERR_SUCCESS = 0
 
 # set up the callback for mqtt messages
 # keep it clean and don't do any long processing here
@@ -152,6 +157,31 @@ def on_message(mqtt_client, userdata, message):
 
 
 ### end on_message()
+
+# callbacks for the mqtt databroker interaction
+def on_disconnect(client, userdata, rc):
+    """ callback for the mqtt data broker disconnect """
+
+    global mqtt_con_status
+    # remember, this is a disconnect status
+    if rc == MQTT_ERR_SUCCESS:
+        mqtt_con_status = False
+        logging.info("Clean MTT disconnece")
+    else:
+        logging.error("Unexpected disconnect from mqtt data broker")
+
+
+def on_connect(client, userdata, flags, rc):
+    """ callback for mqtt data broker connect """
+
+    global mqtt_con_status
+    
+    if rc == MQTT_ERR_SUCCESS:
+        logging.info("MQTT connect success")
+        mqtt_con_status = True
+    else:
+        logging.error("Error connecting to MQTT broker")
+    
 
 # a little class to manage a single, global timer
 class LocalTimer:
@@ -393,11 +423,16 @@ class ManageAlarms:
 #
 
 # choose one of the next two lines before deployment to send logging to a file
-#logging.basicConfig(filename=conf["logfile"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
+#logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
 logging.basicConfig(stream=sys.stderr,
                     level=logging.DEBUG,
                     format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
                     )
+
+#logging.basicConfig(stream=sys.stderr,
+#                    level=logging.INFO,
+#                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
+#                    )
 
 # announce the start
 logging.info("Starting up ...")
@@ -409,10 +444,15 @@ mqtt_client = mqtt.Client(conf["MQTT_CLIENT"])
 # connect to the MQTT broker
 #
 logging.info("Connecting to mqtt broker ...")
-mqtt_client.connect(conf["MQTT_BROKER_ADDR"], conf["MQTT_BROKER_PORT"])
+try:
+    mqtt_client.connect(conf["MQTT_BROKER_ADDR"], conf["MQTT_BROKER_PORT"])
+except ConnectionRefusedError:
+    logging.error("MQTT connection error on first attempt")
 
-# connect the message handler to the mqtt_client instance
+# connect the message handlers to the mqtt_client instance
 mqtt_client.on_message = on_message
+mqtt_client.on_disconnect = on_disconnect
+mqtt_client.on_connect = on_connect
 
 # start the thread to service mqtt traffic
 mqtt_client.loop_start()
@@ -446,26 +486,16 @@ try:
         # process overrides (mostly adjust the values in the parameter data
         manage_alarms.process_overrides()
 
-#        zkshop.display_parameters()
-
         # read/write the locally hosted i/o
         zkshop.physical()
 
+#        zkshop.display_parameters()
 
-        
-        # just a test
-#        GPIO.output(conf["SSR_PIN"], zkshop.o_light.value)
-#        logging.debug("o_light = " + str(zkshop.o_light.value))
-
-        # Testing the SSR
-#        GPIO.output(SSR_PIN, motion_event)
-
-        # say something if a motion event is active
-#        if motion_event == True:
-#            p1 = subprocess.Popen(["echo", "I see you"], stdout = subprocess.PIPE)
-#            p2 = subprocess.Popen(["festival", "--tts"], stdin=p1.stdout, stdout = subprocess.PIPE)
-#            p1.stdout.close()
-#            output,err = p2.communicate()
+        if mqtt_con_status == False:
+            try:
+                mqtt_client.reconnect()
+            except ConnectionRefusedError:
+                logging.debug("MQTT connection error on reconnect attempt")
 
         time.sleep(LOOP_DELAY)
 
