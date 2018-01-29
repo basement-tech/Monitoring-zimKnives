@@ -22,6 +22,9 @@ Functionality (at least):
 # + fixed a bug using bool() with strings in on_message
 # + finish up the override logic for light and auto
 #
+# + added on_disconnect, callback for mqtt broker: attempt reconnect in main loop
+# + added a mqtt_con_status and use it to try to reconnect if connection is lost
+
 
 
 Now that all of the data is flowing, I'll focus on getting some automatic alarming funcitons
