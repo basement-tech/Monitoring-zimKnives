@@ -140,7 +140,7 @@ class Env:
         # publish the data values that this program is sourcing
         for attr in self.parm_list:
             if attr.direction == attr.PUB:
-                self.logging.debug("Publishing: "+attr.label)
+                self.logging.debug("From data_sync() " + "Publishing: "+attr.label)
                 self.mqtt_client.publish(attr.topic, attr.value)
 
         # note that the subscribed values are updated asynchronously by on_message()
