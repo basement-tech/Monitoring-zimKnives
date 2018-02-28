@@ -10,22 +10,19 @@ Functionality (at least):
 + can respond to a change in the light mqtt topic (from NodeRed for example)
 + maintains a local copy of all of the data on the broker (e.g. remote module temp, humidity)
 + first simple motion->light alarm response and architecture to support more
++ can text (via email) on alarm and notifications
++ has a local key switch input for setting auto mode (led to indicate remote override)
 
-# v0.5:
-# + added conf["LOCATION"] to be more specific with messages
-# + added sending email messages on motion event ... it works !
-# + added the holdoff timer for the motion event ... cool !
-# + added periodic notification of t/h/g values
-# + corrected bug where subscribed parameters were all being set as raw strings
-# + moved all of the hardware i/o to the MonitoringParameters Env() class
-# + made json decoding option in the on_message method
-# + fixed a bug using bool() with strings in on_message
-# + finish up the override logic for light and auto
-#
-# + added on_disconnect, callback for mqtt broker: attempt reconnect in main loop
-# + added a mqtt_con_status and use it to try to reconnect if connection is lost
+# Pending:
+# + add remote reboot capability
+# + add thresholds for t/h/g to change from notifications to alarm
+# + command line arguments for logging level, filename, etc
+# + configure the location and use to create the mqtt topics
+#   ... make the data class instance name a bit more generic
+# + reboot on ethernet/network loss ... seems to happen
+# + add timer and configuration parameters to allow leaving after setting auto
 
+See the Monitoring_local.py header for detailed changes in the latest commit.
 
 
-Now that all of the data is flowing, I'll focus on getting some automatic alarming funcitons
-working.
+Got some basic alarming functionality working.  See pending for the next things on the list.

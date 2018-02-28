@@ -24,8 +24,29 @@
 #    but WITHOUT ANY WARRANTY; without even the implied warranty of
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  Use at your own risk.
 #
-# v0.6:
+# Links that I found useful:
+# python3 reference:
+#  https://docs.python.org/3/reference/index.html
+# mqtt:
+#  https://pypi.python.org/pypi/paho-mqtt/1.1
+# Threading timers:
+#  https://docs.python.org/2.4/lib/timer-objects.html
+# i/o with R Pi pins:
+#  https://sourceforge.net/p/raspberry-gpio-python/wiki/BasicUsage/
+#  https://sourceforge.net/p/raspberry-gpio-python/wiki/Inputs/
 #
+# v0.8 (i don't like the number in between)
+# + moved the t/h/g timer to the new local timer class
+# + added the override led to the parameters class and tested
+# + added setting of parm.event on MQTT-based, bool parameters
+# + rearranged the initialization of the local hardware
+#   (added i/o flag and initialization method to Parm class ... much cleaner)
+# + added some timer logic to allow clean cleanup
+# + added handling of the remote auto and key switch auto together
+# + implemented logic to control the override led appropriately
+# 
+#
+# v0.6:
 # + created timer class for reusability and auto-False cleanup
 # + added on_disconnect, callback for mqtt broker: attempt reconnect in main loop
 # + added a mqtt_con_status and use it to try to reconnect if connection is lost
@@ -67,13 +88,13 @@
 # + very basic functionality and some experimentation
 #
 # Pending:
-# + clean up the timer threads o ^c better ... mostly for development
+# + add remote reboot capability
 # + add thresholds for t/h/g to change from notifications to alarm
 # + command line arguments for logging level, filename, etc
 # + configure the location and use to create the mqtt topics
 #   ... make the data class instance name a bit more generic
-# + maybe collapse process_overrides() and process_stimuluses() into just stimuluses
-# + maybe use motion.event instead of separate motion_event
+# + reboot on ethernet/network loss ... seems to happen
+# + add timer and configuration parameters to allow leaving after setting auto
 #
 
 import paho.mqtt.client as mqtt
@@ -137,13 +158,17 @@ def on_message(mqtt_client, userdata, message):
         # be careful using bool() on strings !
         elif parm_type == bool:
             if value == "True":
+                if parm.pvalue == False:
+                    parm.event = True
                 parm.pvalue = parm.value
                 parm.value = True
             elif value == "False":
+                if parm.pvalue == True:
+                    parm.event = True
                 parm.pvalue = parm.value
                 parm.value = False
             else:
-                logging.error("Strange value on bool from " + message.topic)
+                logging.error("on_message():Strange value on bool from " + message.topic)
             
         elif parm_type == int:
             parm.pvalue = parm.value
@@ -181,12 +206,15 @@ def on_connect(client, userdata, flags, rc):
         mqtt_con_status = True
     else:
         logging.error("Error connecting to MQTT broker")
-    
+
+
 
 # a little class to manage a single, global timer
 class LocalTimer:
     """ make the timer available more globally and terminate easier """
 
+    started = False
+    
     def __init__(self, interval, function, args=[], kwargs={}):
         self.interval = interval
         self.function = function
@@ -199,9 +227,11 @@ class LocalTimer:
 
     def start(self):
         self.timer.start()
+        self.started = True
 
     def cancel(self):
         self.timer.cancel()
+        self.started = False
         
 
 ### alarming effects/responses ... JUST GETTING STARTED ON THIS PART ... NOT WORKING YET
@@ -213,7 +243,7 @@ class ManageAlarms:
     def __init__(self):
         # used to loop through the stimulus'es to be processed
         # >>> ADD NEW STIMULUSES TO BE PROCESSED HERE
-        self.stimulus_list = [self.motion_detected, self.temp_hum_gas]
+        self.stimulus_list = [self.motion_detected, self.temp_hum_gas, self.auto_on_off, self.set_ovrled]
 
         # keep track of whether we are in alarming events
         self.motion_event = False
@@ -223,6 +253,7 @@ class ManageAlarms:
 
         # instantiate the local timer class to be used over and over
         self.mtimer = LocalTimer(conf["MOTION_HOLDOFF"], self.reset_motion_event)
+        self.ttimer = LocalTimer(conf["THG_HOLDOFF"], self.reset_thg_sent)
 
 
     ### stimulus processing functions
@@ -256,6 +287,7 @@ class ManageAlarms:
         """ reset the motion event, usually after the timer expires """
         logging.debug("Timer resetting motion event")
         self.motion_event = False
+        self.mtimer.started = False
 
     # Temp, Humidity, Gas value processing : send status text/mail a couple of times a day
     def temp_hum_gas(self):
@@ -267,16 +299,53 @@ class ManageAlarms:
                       " G:" + str(zkshop.gas.value)
             logging.debug("Text message: " + message)
             self.send_notif_msgs(message)
-            t = threading.Timer(conf["THG_HOLDOFF"], self.reset_thg_sent)
-            t.daemon = True # helps with ^c behavior
-            t.start()
+            self.ttimer.create()
+            self.ttimer.start()
             self.thg_sent = True
             
     def reset_thg_sent(self):
         """ reset the temp, hum, gas "sent" flag, usually after the timer expires """
         logging.debug("Timer resetting thg sent flag")
         self.thg_sent = False
+        self.ttimer.started = False
+            
 
+    # auto mode on/off processing
+    def auto_on_off(self):
+        """ do, sort of a three-way switch with remote and local key switch for auto mode """
+        
+        # was a new event from the key received?
+        if zkshop.keysw.event == True:
+            if zkshop.keysw.value == True:
+                logging.info("keysw commanded auto on ... doing it")
+                zkshop.auto.value = True
+            elif zkshop.keysw.value == False:
+                logging.info("keysw commanded auto off ... doing it")
+                zkshop.auto.value = False
+                self.secure_from_auto()
+            else:
+                logging.error("strange value received for auto override ... ignored")
+
+            zkshop.keysw.event = False # use it only once
+
+        if zkshop.o_auto.event == True:
+            if zkshop.o_auto.value == True:
+                logging.info("override commanded auto on ... doing it")
+                zkshop.auto.value = True
+            elif zkshop.o_auto.value == False:
+                logging.info("override commanded auto off ... doing it")
+                zkshop.auto.value = False
+                self.secure_from_auto()
+            else:
+                logging.error("strange value received for auto override ... ignored")
+
+            zkshop.o_auto.event = False # use it only once
+
+    def set_ovrled(self):
+        """ adjust the state of the auto override led """
+
+        zkshop.ovrled.value = zkshop.keysw.value ^ zkshop.auto.value
+            
 
     ### processing operations to perform every so often; probalby in the main while()
         
@@ -307,21 +376,7 @@ class ManageAlarms:
             
 
         # automatic alarming mode
-
-        # was a new event received?
-        if zkshop.o_auto.event == True:
-            if zkshop.o_auto.value == True:
-                logging.info("override commanded auto on ... doing it")
-                zkshop.auto.value = True
-            elif zkshop.o_auto.value == False:
-                logging.info("override commanded auto off ... doing it")
-                zkshop.auto.value = False
-                self.secure_from_auto()
-            else:
-                logging.error("strange value received for auto override ... ignored")
-
-            zkshop.o_auto.event = False # use it only once
-
+        # code moved to stimulus section because it is combined with key switch input
 
     
     ### alarming responses
@@ -391,7 +446,10 @@ class ManageAlarms:
         """ clean things up after auto alarming is disabled """
         # end all events in progress/reset alarm event timers
         self.motion_event = False
-        self.mtimer.cancel()
+        if self.mtimer.started == True:
+            self.mtimer.cancel()
+        if self.ttimer.started == True:
+            self.ttimer.cancel()
 
     def start_auto(self):
         """ cleanly start up auto-alarming; return outputs to default """        
@@ -425,7 +483,7 @@ class ManageAlarms:
 # choose one of the next two lines before deployment to send logging to a file
 #logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
 logging.basicConfig(stream=sys.stderr,
-                    level=logging.DEBUG,
+                    level=logging.INFO,
                     format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
                     )
 
@@ -461,6 +519,9 @@ mqtt_client.loop_start()
 zkshop = Env(logging, mqtt_client)
 zkshop.data_sync(mqtt_client)
 
+# initialize the locally connected hardware
+zkshop.physical_init()
+
 # subscribe to those which will be read
 zkshop.subscribe(mqtt_client)
 
@@ -485,11 +546,11 @@ try:
 
         # process overrides (mostly adjust the values in the parameter data
         manage_alarms.process_overrides()
-
+        
         # read/write the locally hosted i/o
         zkshop.physical()
 
-#        zkshop.display_parameters()
+        zkshop.display_parameters()
 
         if mqtt_con_status == False:
             try:
@@ -502,6 +563,7 @@ try:
 # ^C cleanup
 except KeyboardInterrupt:
     logging.info("Cleaning up ... goodbye.")
+    manage_alarms.secure_from_auto()
     zkshop.cleanup()
     mqtt_client.loop_stop()
     mqtt_client.disconnect()

@@ -48,7 +48,7 @@ class Parm:
     LOCAL = 1
     REMOTE = 2
 
-    def __init__(self, label, value, pvalue, units, when, direction, topic, event = False, jflag = False, physical=lambda x: None, io_pin = -1, last_chgr=LOCAL):
+    def __init__(self, label, value, pvalue, units, when, direction, topic, event = False, jflag = False, physical=lambda x: None, io_pin = -1, io_dir = GPIO.IN):
         self.label = label # human readable label
         self.value = value # actual value of the parameter
         self.pvalue = pvalue # previous value; used for s/w edge detection
@@ -61,7 +61,8 @@ class Parm:
         self.physical = physical # function used to acquire/set locally hosted parameters
                                # Note: some parameters are aquired by asynchronous callbacks
         self.io_pin = io_pin # in the case of physical i/o
-        self.last_chgr = last_chgr # who changed the parameter value last
+        self.io_dir = io_dir # for physical i/o is the pin in or out
+
 
 class Env:
     """ describe the environmental and control parameters, and provide some convenient functions """
@@ -73,6 +74,8 @@ class Env:
         self.logging = logging
         self.mqtt_client = mqtt_client
 
+        #
+        # >>> ADD NEW PARAMETERS HERE ... ADD HANDLERS DOWN BELOW
         #
         # Note: pvalue may not be maintained for all parameters
         #       (definitely not for o_auto and o_light)
@@ -91,35 +94,27 @@ class Env:
         self.o_auto   = Parm("o_auto",   False, False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_auto")
 
         # motion sensor, panic button, auto key switch hosted by the pi
-        self.motion   = Parm("motion",   False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/motion")
+        self.motion   = Parm("motion",   False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/motion",   False, False, lambda x: None, conf["MOTION_PIN"], GPIO.IN)
         self.panicbut = Parm("panicbut", False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/panicbut")
         self.auto     = Parm("auto",     False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/auto")
+        self.keysw    = Parm("keysw",    False, False, "t/f",   "00:00:00", Parm.PUB, "zk-enf/keysw",    False, False, self.read_pin, conf["KEYSW_PIN"], GPIO.IN)
+
         # local control of the light (usually automatic)
-        self.light    = Parm("light",    False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/light",    False, False, self.write_pin, conf["SSR_PIN"])
+        self.light    = Parm("light",    False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/light",    False, False, self.write_pin, conf["SSR_PIN"], GPIO.OUT)
+
+        # automatic override indicator
+        self.ovrled   = Parm("ovrled",   False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/ovrled",   False, False, self.write_pin, conf["OVRLED_PIN"], GPIO.OUT)
 
         # used to loop through the parameters in other functions
-        self.parm_list = [self.temp, self.humidity, self.gas, self.o_light, self.o_auto,
-                          self.motion, self.panicbut, self.light, self.auto]
+        self.parm_list = [self.temp, self.humidity, self.gas, self.o_light, self.o_auto, self.keysw,
+                          self.motion, self.panicbut, self.light, self.auto, self.ovrled]
 
-        # BCM numbering scheme for Pi pins
-        GPIO.setmode(GPIO.BCM)
 
-        #
-        # setup the motion control input
-        #
-        GPIO.setup(conf["MOTION_PIN"], GPIO.IN)
-        GPIO.setup(conf["SSR_PIN"], GPIO.OUT)
-        GPIO.output(conf["SSR_PIN"], False)
 
-        #
-        # There seems to be a bug where the edge detection triggers on both
-        # edges.  Compensate in the ISR.
-        #
-        GPIO.add_event_detect(conf["MOTION_PIN"], GPIO.BOTH, callback=self.motion_detected)
 
 
 ### this section has the code to manipulate the parameter data structure
-### and interact with the MQTT dat broker
+### and interact with the MQTT data broker
 ### (code for physical i/o below)
         
     def subscribe(self, broker):
@@ -203,16 +198,18 @@ class Env:
             
 ### below is the stuff to handle the physical i/o hosted on the pi
 ### functions to acquire data or respond to interrupt driven parameters
+#
+# >>> ADD YOUR HANDLERS FOR THE INDIVIDUAL PARAMETERS HERE
+#
 
-    # Define callbacks for i/o changes
-    def motion_detected(self, channel):
-        """ set the local motion_event flag """
+    def motion_edge(self, channel):
+        """ set the local motion_event flag based on edge detected """
 
         # read the input to determine which edge
         # do a little software debounce and double-check the value
 
         # is the detector indicating motion?
-        if GPIO.input(conf["MOTION_PIN"]) == True:
+        if GPIO.input(self.motion.io_pin) == True:
             self.logging.debug("Rising edge detected on %s" %channel)
             
             # was the last look indicating no motion (i.e. this is a clean transition)
@@ -234,8 +231,26 @@ class Env:
             else:
                 self.logging.debug("Noise")
 
-    ### end of motion_detected()
-     
+    ### end of motion_edge()
+                
+    def physical_init(self):
+        """ initialize the physical i/o lines """
+        
+        # BCM numbering scheme for Pi pins
+        GPIO.setmode(GPIO.BCM)
+        
+        for attr in self.parm_list:
+            if attr.io_pin > 0:
+                GPIO.setup(attr.io_pin, attr.io_dir)
+                if attr.io_dir == GPIO.OUT:
+                    GPIO.output(attr.io_pin, attr.value)
+        #
+        # There seems to be a bug where the edge detection triggers on both
+        # edges.  Compensate in the ISR.
+        #
+        GPIO.add_event_detect(self.motion.io_pin, GPIO.BOTH, callback=self.motion_edge)
+        
+            
     def physical(self):
         """ execute the functions to interact with physical i/o lines """
 
@@ -254,7 +269,9 @@ class Env:
         
         self.logging.debug("Setting " + attr.label + " to " + str(attr.value) + " from pin " + str(attr.io_pin))
         attr.pvalue = attr.value
-        GPIO.input(attr.io_pin, attr.value)
+        attr.value = bool(GPIO.input(attr.io_pin))
+        if attr.value != attr.pvalue:
+            attr.event = True
 
     def cleanup(self):
         GPIO.cleanup()
