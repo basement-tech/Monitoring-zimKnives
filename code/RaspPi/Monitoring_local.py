@@ -35,6 +35,9 @@
 #  https://sourceforge.net/p/raspberry-gpio-python/wiki/BasicUsage/
 #  https://sourceforge.net/p/raspberry-gpio-python/wiki/Inputs/
 #
+# v0.9
+#
+#
 # v0.8 (i don't like the number in between)
 # + moved the t/h/g timer to the new local timer class
 # + added the override led to the parameters class and tested
@@ -150,7 +153,7 @@ def on_message(mqtt_client, userdata, message):
         # check the type
         # do nothing if the topic is not found in the parm list
         parm_type = type(parm.value)
-        logging.debug("Setting " + message.topic + " as " + str(parm_type) + " to " + value)
+        logging.debug("Setting " + message.topic + " as " + str(parm_type) + " to " + str(value))
         if parm_type == float:
             parm.pvalue = parm.value
             parm.value = float(value)
@@ -481,11 +484,11 @@ class ManageAlarms:
 #
 
 # choose one of the next two lines before deployment to send logging to a file
-#logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
-logging.basicConfig(stream=sys.stderr,
-                    level=logging.INFO,
-                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
-                    )
+logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
+#logging.basicConfig(stream=sys.stderr,
+#                    level=logging.DEBUG,
+#                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
+#                    )
 
 #logging.basicConfig(stream=sys.stderr,
 #                    level=logging.INFO,
