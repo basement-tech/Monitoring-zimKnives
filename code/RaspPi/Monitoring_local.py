@@ -36,6 +36,8 @@
 #  https://sourceforge.net/p/raspberry-gpio-python/wiki/Inputs/
 #
 # v0.9
+# + fixed bug where secure_from_auto() was resetting the t/g/h timer
+#   (t/g/h notification is not controlled by auto mode)
 #
 #
 # v0.8 (i don't like the number in between)
@@ -225,19 +227,20 @@ class LocalTimer:
         self.kwargs = kwargs
 
     def create(self):
+        """ arm a timer ... need to call start() to start ... self cancelling """
         self.timer = threading.Timer(self.interval, self.function, self.args, self.kwargs)
         self.timer.daemon = True  # helps with ^c behavior
 
     def start(self):
+        """ start a timer that has beed created using create() """
         self.timer.start()
         self.started = True
 
     def cancel(self):
+        """ cancel a timer that has yet to complete """
         self.timer.cancel()
         self.started = False
         
-
-### alarming effects/responses ... JUST GETTING STARTED ON THIS PART ... NOT WORKING YET
 
 class ManageAlarms:
     """ Manage all of the automatic alarming logic """
@@ -294,7 +297,8 @@ class ManageAlarms:
 
     # Temp, Humidity, Gas value processing : send status text/mail a couple of times a day
     def temp_hum_gas(self):
-        """ process the temperature, humidity and gas readings """
+        """ process the temperature, humidity and gas readings.
+            not controlled by auto mode (i.e. runs continuously) """
 
         if self.thg_sent == False:
             message = "T:" + str(zkshop.temp.value) + \
@@ -451,8 +455,7 @@ class ManageAlarms:
         self.motion_event = False
         if self.mtimer.started == True:
             self.mtimer.cancel()
-        if self.ttimer.started == True:
-            self.ttimer.cancel()
+
 
     def start_auto(self):
         """ cleanly start up auto-alarming; return outputs to default """        
@@ -484,11 +487,11 @@ class ManageAlarms:
 #
 
 # choose one of the next two lines before deployment to send logging to a file
-logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
-#logging.basicConfig(stream=sys.stderr,
-#                    level=logging.DEBUG,
-#                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
-#                    )
+#logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
+logging.basicConfig(stream=sys.stderr,
+                    level=logging.DEBUG,
+                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
+                    )
 
 #logging.basicConfig(stream=sys.stderr,
 #                    level=logging.INFO,
