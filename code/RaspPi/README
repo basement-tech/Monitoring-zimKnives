@@ -1,7 +1,8 @@
 This is the collection of custom python code that runs on the Raspberry Pi
 part of the system. (See system diagram in "docs".)
 
-At this point, it is completely a works in progress.  It runs as is without errors.
+At this point, it provides some useful functionality and provides a solid
+framework for additional functionality.
 
 Functionality (at least):
 + reads the locally connected motion detector
@@ -12,6 +13,7 @@ Functionality (at least):
 + first simple motion->light alarm response and architecture to support more
 + can text (via email) on alarm and notifications
 + has a local key switch input for setting auto mode (led to indicate remote override)
++ separate pingtest.py reboots on loss of internet access
 
 # Pending:
 # + add remote reboot capability
@@ -19,10 +21,8 @@ Functionality (at least):
 # + command line arguments for logging level, filename, etc
 # + configure the location and use to create the mqtt topics
 #   ... make the data class instance name a bit more generic
-# + reboot on ethernet/network loss ... seems to happen
 # + add timer and configuration parameters to allow leaving after setting auto
 
 See the Monitoring_local.py header for detailed changes in the latest commit.
 
 
-Got some basic alarming functionality working.  See pending for the next things on the list.
