@@ -35,6 +35,15 @@
 #  https://sourceforge.net/p/raspberry-gpio-python/wiki/BasicUsage/
 #  https://sourceforge.net/p/raspberry-gpio-python/wiki/Inputs/
 #
+# v1.0
+# + replaced gas parameter with three to support raw and PPM data from the sensor
+#   (changed in MonitoringParameters.py)
+# + adjusted temp_hum_gas() response to include the new gas parameters
+# + accomodated the change in the mqtt/json packet from the remote sensor
+#   (added setting the timestamp per parameter from the remote sensor packet)
+# + implemented limit alarms, primarily for environmental/numerical parameters
+#   (modified Monitoring_conf.py to specify the timing holdoff and limit values)
+#
 # v0.9
 # + fixed bug where secure_from_auto() was resetting the t/g/h timer
 #   (t/g/h notification is not controlled by auto mode)
@@ -148,7 +157,8 @@ def on_message(mqtt_client, userdata, message):
             # convert to a string ... note: contains a 'b' before the data
             jstring = message.payload.decode('utf-8')
             jdict = json.loads(jstring)
-            value = list(jdict.values())[0] # only reliable because there is only one object
+            value = jdict[list(jdict)[0]]["value"] # only reliable because there is only one object
+            parm.when = jdict[list(jdict)[0]]["tstamp"]
         else:
             value = message.payload.decode('utf-8')
 
@@ -254,12 +264,16 @@ class ManageAlarms:
         # keep track of whether we are in alarming events
         self.motion_event = False
 
-        # keep track of when the temp, humidity and gas message was sent
+        # keep track of when the temp, humidity and gas status message was sent
         self.thg_sent = False
+
+        # keep track of when the limit message has been sent
+        self.limit_sent = False
 
         # instantiate the local timer class to be used over and over
         self.mtimer = LocalTimer(conf["MOTION_HOLDOFF"], self.reset_motion_event)
         self.ttimer = LocalTimer(conf["THG_HOLDOFF"], self.reset_thg_sent)
+        self.ltimer = LocalTimer(conf["LIM_HOLDOFF"], self.reset_limit_sent)
 
 
     ### stimulus processing functions
@@ -303,7 +317,8 @@ class ManageAlarms:
         if self.thg_sent == False:
             message = "T:" + str(zkshop.temp.value) + \
                       " H:" + str(zkshop.humidity.value) + \
-                      " G:" + str(zkshop.gas.value)
+                      " G_CO:" + str(zkshop.gasco.value) + \
+                      " G_PR:" + str(zkshop.gaspr.value)
             logging.debug("Text message: " + message)
             self.send_notif_msgs(message)
             self.ttimer.create()
@@ -315,7 +330,12 @@ class ManageAlarms:
         logging.debug("Timer resetting thg sent flag")
         self.thg_sent = False
         self.ttimer.started = False
-            
+
+    def reset_limit_sent(self):
+        """ reset the limit sent flag, usually after the timer expires """
+        logging.debug("Timer resetting limit sent flag")
+        self.limit_sent = False
+        self.ltimer.started = False
 
     # auto mode on/off processing
     def auto_on_off(self):
@@ -384,6 +404,54 @@ class ManageAlarms:
 
         # automatic alarming mode
         # code moved to stimulus section because it is combined with key switch input
+
+    def process_limits(self):
+        """ loop through the "LIMIT_CHECKS" dictionary from the conf file and
+            take send messages if warranted """
+
+        logging.debug("Processing limits ...")
+
+        message = "LIMIT"
+
+        # loop through all of the limit checks from the config file
+        # build up a single message to be sent after all are processed
+        for item in conf["LIMIT_CHECKS"]:
+                parm = zkshop.get_parameter_by_label(conf["LIMIT_CHECKS"][item]["parm"])
+                if parm == None:
+                    logging.info("Spurious label in LIMIT_CHECKS... ignored;  label = " + conf["LIMIT_CHECKS"][item]["parm"])
+                else:
+                    if conf["LIMIT_CHECKS"][item]["sense"] == "high":
+                        if parm.value >= conf["LIMIT_CHECKS"][item]["limit"]:
+                            logging.info("Limit message: " + conf["LIMIT_CHECKS"][item]["message"] + \
+                            " (parm:" + conf["LIMIT_CHECKS"][item]["parm"] + \
+                            " limit:" + str(conf["LIMIT_CHECKS"][item]["limit"]) + \
+                            " value: " + str(parm.value) + " " + parm.units)
+
+                            message = message + "\n" + conf["LIMIT_CHECKS"][item]["message"]
+
+                    elif conf["LIMIT_CHECKS"][item]["sense"] == "low":
+                        if parm.value <= conf["LIMIT_CHECKS"][item]["limit"]:
+                            logging.info("Limit message: " + conf["LIMIT_CHECKS"][item]["message"] + \
+                            " (parm:" + conf["LIMIT_CHECKS"][item]["parm"] + \
+                            " limit:" + str(conf["LIMIT_CHECKS"][item]["limit"]) + \
+                            " value: " + str(parm.value) + " " + parm.units)
+
+                            message = message + "\n" + conf["LIMIT_CHECKS"][item]["message"]
+                            
+                    else:
+                        logging.info("Bad sense in LIMIT_CHECKS ... ignored; sense = " + conf["LIMIT_CHECKS"][item]["sense"])
+
+        # if a message was created (i.e. a limit was exceeded), send it
+        if message != "LIMIT":            
+            # if a limit was exceeded and a message has not been sent
+            # recently (controlled by "LIM_HOLDOFF"), create and send it
+            if self.limit_sent == False:
+                logging.debug("Text message: " + message)
+                self.send_alarm_msgs(message)
+                self.ltimer.create()
+                self.ltimer.start()
+                self.limit_sent = True
+
 
     
     ### alarming responses
@@ -487,11 +555,11 @@ class ManageAlarms:
 #
 
 # choose one of the next two lines before deployment to send logging to a file
-#logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
-logging.basicConfig(stream=sys.stderr,
-                    level=logging.DEBUG,
-                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
-                    )
+logging.basicConfig(filename=conf["LOGFILE"], level=logging.INFO, format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s')
+#logging.basicConfig(stream=sys.stderr,
+#                    level=logging.DEBUG,
+#                    format='%(asctime)s - Monitoring_local - %(levelname)s - %(message)s'
+#                    )
 
 #logging.basicConfig(stream=sys.stderr,
 #                    level=logging.INFO,
@@ -557,6 +625,8 @@ try:
         zkshop.physical()
 
         zkshop.display_parameters()
+
+        manage_alarms.process_limits()
 
         if mqtt_con_status == False:
             try:
