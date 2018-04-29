@@ -1,1 +1,29 @@
 This is the code that runs on the ESP8266-based remote sensing unit.
+
+I'm not sure what's the best way to make this code available, so I'll
+upload the .ino and a cut/paste .c file.
+
+NOTE:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of these words as published by the author.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  Use at your own risk.
+ * 
+ * Under absolutely no circumstances should this software/firmware alone or in
+ * combination with hardware on which it was designed to run be used 
+ * to make safety and/or health decisions.  Do not use it to determine if a
+ * location is safe for human or animal occupancy.  It was developed solely
+ * for hobby and learning purposes.
+ 
+ *****
+ *** The formula's are a guess !!!  *** NOT CALIBRATED ***
+ *** Under absolutely no circumstances should this software/firmware alone or in
+ *** combination with hardware on which it was designed to run be used 
+ *** to make safety and/or health decisions.
+ ***
+ *** Do not use it to determine if a
+ *** location is safe for human or animal occupancy.  It was developed solely
+ *** for hobby and learning purposes.
+ *****
