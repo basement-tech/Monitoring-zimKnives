@@ -82,13 +82,33 @@ class Env:
         #
         #       only o_auto and o_light reset the event flag
         #
+        # parameters that are SUB'ed and are json formatted are expected to have this structure:
+        #
+        # {"parm_id" : {          # a string self-identifying the measurement nature (e.g. "temp")
+        #    "value": xxx.y,      # the value of the parameter in this sample (different types allowed)
+        #    "location": "there", # physical location of the sensor
+        #    "tstamp": "00:00:00" # time-of-day stamp of the form hh:mm:ss
+        #    }
+        # }
+        #
+        # self.topic is used as the primary key in this python application
+        # i.e. data elements, which are received in an event driven manner
+        # from the data broker are routed to a parameter in this class using
+        # the self.topic attribute.
+        #
+        # Note that since these keys have some location info, the "location" that
+        # is sent with the json packet is a bit redundant.
+        #
         #                    label       value  pvalue  units     when      direction  topic             event   jflag   physical       pin
         #                                                                                               (false) (false)   (None)        (-1)
         #                    -----       -----  ------  -----     ----      ---------  -----             -----  -----    --------       ---
         # temp, humidity, combustable gasses from the remote environmental sensor
         self.temp     = Parm("temp",     0.0,   0.0,   "deg C", "00:00:00", Parm.SUB, "zk-env/temp",     False,  True)
         self.humidity = Parm("humidity", 0.0,   0.0,   "\%",    "00:00:00", Parm.SUB, "zk-env/humidity", False,  True)
-        self.gas      = Parm("gas",      0.0,   0.0,   "units", "00:00:00", Parm.SUB, "zk-env/gas",      False,  True)
+        self.gasrw    = Parm("gasraw",   0.0,   0.0,   "bits",  "00:00:00", Parm.SUB, "zk-env/gasrw",    False,  True)
+        self.gasco    = Parm("gasco",    0.0,   0.0,   "PPM",   "00:00:00", Parm.SUB, "zk-env/gasco",    False,  True)
+        self.gaspr    = Parm("gaspr",    0.0,   0.0,   "PPM",   "00:00:00", Parm.SUB, "zk-env/gaspr",    False,  True)
+        self.tstamp   = Parm("tstamp",   "nul", "nul", "time",  "00:00:00", Parm.SUB, "zk-env/time",     False,  True)
         # light and auto switch override command parameters
         self.o_light  = Parm("o_light",  False, False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_light")
         self.o_auto   = Parm("o_auto",   False, False, "t/f",   "00:00:00", Parm.SUB, "zk-env/o_auto")
@@ -106,9 +126,9 @@ class Env:
         self.ovrled   = Parm("ovrled",   False, False, "t/f",   "00:00:00", Parm.PUB, "zk-env/ovrled",   False, False, self.write_pin, conf["OVRLED_PIN"], GPIO.OUT)
 
         # used to loop through the parameters in other functions
-        self.parm_list = [self.temp, self.humidity, self.gas, self.o_light, self.o_auto, self.keysw,
+        self.parm_list = [self.temp, self.humidity, self.gasrw, self.gasco, self.gaspr, self.tstamp,
+                          self.o_light, self.o_auto, self.keysw,
                           self.motion, self.panicbut, self.light, self.auto, self.ovrled]
-
 
 
 
@@ -140,6 +160,8 @@ class Env:
 
         # note that the subscribed values are updated asynchronously by on_message()
 
+
+
     def get_parameter(self, topic):
         """ get the parameter instance for the provided topic """
                 
@@ -160,6 +182,15 @@ class Env:
         self.logging.error("Can't find topic: "+topic)
         return type(None)
 
+    def get_parameter_by_label(self, label):
+        """ get the parameter instance for the provided topic """
+                
+        for attr in self.parm_list:
+            if attr.label == label:
+                return attr
+
+        self.logging.error("Can't find topic: "+label)
+        return None
 
     def set_parameter(self, topic, value):
         """ set a single parameter value in the class attibute
@@ -192,7 +223,7 @@ class Env:
 
         self.logging.debug("============")
         for attr in self.parm_list:
-            self.logging.debug(attr.label + " = " + str(attr.value))
+            self.logging.debug(attr.label + " (" + attr.when + ")" + " = " + str(attr.value))
         self.logging.debug("============")
 
             
