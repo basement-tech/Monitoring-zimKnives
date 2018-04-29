@@ -45,4 +45,29 @@ conf = {
 #"THG_HOLDOFF" : 86400.0,  # one day
 "THG_HOLDOFF" : 43200.0,  # 12 hrs
 #"THG_HOLDOFF" : 300.0,  # 5 mins for testing
+"LIM_HOLDOFF" : 300.0,
+
+# *****
+# *** The formula's behind these limits are a guess !!!  *** NOT CALIBRATED ***
+# *** Under absolutely no circumstances should this software/firmware alone or in
+# *** combination with hardware on which it was designed to run be used 
+# *** to make safety and/or health decisions.
+# ***
+# *** Do not use it to determine if a
+# *** location is safe for human or animal occupancy.  It was developed solely
+# *** for hobby and learning purposes.
+# *** DO YOUR OWN HOMEWORK ... FIND YOUR OWN EXPERTS.
+# *****
+
+# These entries set the limits for parameter values
+# Add as many as is required ... don't forget to increment the line numbers
+"LIMIT_CHECKS" : {
+    "1": {"parm": "gasco", "limit": 15.0, "sense": "high", "message": "NOTIF: Carbon Monoxide is above normal"},
+    "2": {"parm": "gasco", "limit": 35.0, "sense": "high", "message": "ALERT: Carbon Monoxide is very high"},
+    "3": {"parm": "gaspr", "limit": 1000.0, "sense": "high", "message": "NOTIF: Propane reading is above normal"},
+    "4": {"parm": "gaspr", "limit": 5000.0, "sense": "high", "message": "ALERT: Propane reading is very high"},
+    "5": {"parm": "temp",  "limit": 2.0,  "sense": "low",  "message": "ALERT: Temp is very low"},
+    "6": {"parm": "temp",  "limit": 40.0, "sense": "high",  "message": "ALERT: Temp is very high"},
+    }
+
 }
