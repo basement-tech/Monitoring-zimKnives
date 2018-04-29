@@ -14,10 +14,11 @@ Functionality (at least):
 + can text (via email) on alarm and notifications
 + has a local key switch input for setting auto mode (led to indicate remote override)
 + separate pingtest.py reboots on loss of internet access
++ handles expanded json packet from remote which included timestamp
++ limits on parameters which send text messages when exceeded.
 
 # Pending:
 # + add remote reboot capability
-# + add thresholds for t/h/g to change from notifications to alarm
 # + command line arguments for logging level, filename, etc
 # + configure the location and use to create the mqtt topics
 #   ... make the data class instance name a bit more generic
