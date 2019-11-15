@@ -1,7 +1,5 @@
 This is the code that runs on the ESP8266-based remote sensing unit.
 
-I'm not sure what's the best way to make this code available, so I'll
-upload the .ino and a cut/paste .c file.
 
 NOTE:
  * This program is free software: you can redistribute it and/or modify
