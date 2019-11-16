@@ -25,3 +25,11 @@ NOTE:
  *** location is safe for human or animal occupancy.  It was developed solely
  *** for hobby and learning purposes.
  *****
+
+What's what ? :
+RemoteEnvSensorESP_v0.8_gen - This is the original version written and featured in the zimKnives videos at YouTube:Basement Tech.  It ran on a hand-constructed protoboard.  I think I'll sunset this version.  I built a PCB to consolidate adafruit modules and I'll make that firmware generic to run on the old hardware and new.
+
+esp8266-router-monitor - This is Zach's start at doing some crazy fun things with neopixels as a way to indicate status of the new zimKnives shop's CNC Router for wood carving.  It will eventually be merged with the environmental monitoring firmware, which will be given the capability to monitor the machine.
+
+Yet-un-named version - watch for this to appear.  It is the continuation of development on the new PCB.
+
