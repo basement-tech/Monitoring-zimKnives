@@ -31,5 +31,5 @@ RemoteEnvSensorESP_v0.8_gen - This is the original version written and featured 
 
 esp8266-router-monitor - This is Zach's start at doing some crazy fun things with neopixels as a way to indicate status of the new zimKnives shop's CNC Router for wood carving.  It will eventually be merged with the environmental monitoring firmware, which will be given the capability to monitor the machine.
 
-Yet-un-named version - watch for this to appear.  It is the continuation of development on the new PCB.
+RemoteEnvSensorESP_v1.1 - watch for this to appear.  It is the continuation of development on the new PCB.
 
