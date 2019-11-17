@@ -29,7 +29,6 @@
  *
  * Now:
  * + include the topics in the thermistor structure ?
- * + implement a dynamic loop delay() to account for variable loop timing
  * 
  * Longer term:
  * + add separate calibrations to thermistor structure
@@ -44,6 +43,7 @@
  * + Created this new major version to consolidate functionality including neoPixel functionality
  * + Worked out the basic formulas for converting the thermistor input to physical units
  * + added thermistor values to the mqtt/json packet
+ * + implemented dynamic loop delay() to have consistent sample intervals
  * 
  * v0.9:
  * +adjusted WIFI LED pin number and sense in several places
@@ -141,6 +141,12 @@
 // delay for the main sensing loop
 // samples are sent this often in mS
 #define SEND_INTERVAL  2000
+
+/*
+ * use these to do more repeatable loop timing
+ * only delay the amount of the SEND_INTERVAL that wasn't used up by other calls
+ */
+unsigned long currentMillis = 0, previousMillis = 0;
 
 /* 
  * ADC gain
@@ -509,12 +515,18 @@ void setup() {
   ads.setGain(ADC_GAIN); // Set the gain for all channels
 #endif
 
+  currentMillis = previousMillis = millis();
 }
 
 /*
  * ***************  LOOP  ***************
  */
 void loop() {
+  /*
+   * keep track of milliseconds used and only delay at the end of the
+   * loop for the SEND_INTERVAL that wasn't used up
+   */
+  previousMillis = millis();
   
   /*
    * Status the WIFI and set the LED indicator accordingly
@@ -679,6 +691,7 @@ void loop() {
     LMQTTConnect(false);
   }
 
-  delay(SEND_INTERVAL);
+  Serial.print("Time used in loop: "); Serial.println(millis() - previousMillis);
+  delay(SEND_INTERVAL - (millis() - previousMillis));
   
 }
