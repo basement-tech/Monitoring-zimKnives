@@ -25,8 +25,24 @@
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of Gas Sensor)
  * Adafruit MiCS5524 Gas Sensor (P3199)
  * 
+ * Pending:
+ *
+ * Now:
+ * + genericize the raw a/d readings using an array and function call (put behind the if a/d exists)
+ * + implement the temp conversion function properly
+ * + implement a dynamic loop delay() to account for variable loop timing
+ * 
+ * Longer term:
+ * + add the location to the json string
+ * + decide if there is a way to dynamically configure the network/hardware config
+ * + add flash based config file (json) (e.g. MQTT server, timezone, etc.) ... use EEPROM lib
+ * + if the NIST time sync fails, annotate the time with an asterisk
+ * + implement a red "failed" light
+ * 
+ * 
  * v1.1:
  * + Created this new major version to consolidate functionality including neoPixel functionality
+ * + Worked out the basic formulas for converting the thermistor input to physical units
  * 
  * v0.9:
  * +adjusted WIFI LED pin number and sense in several places
@@ -67,13 +83,6 @@
  * + convert the message format to json
  * + add the ADC acquisition and sending code - test with pot
  * 
- * Pending:
-
- * + add the location to the json string
- * + decide if there is a way to dynamically configure the network/hardware config
- * + add flash based config file (json) (e.g. MQTT server, timezone, etc.) ... use EEPROM lib
- * + if the NIST time sync fails, annotate the time with an asterisk
- * + implement a red "failed" light
  */
 
 #include <NTPClient.h>
@@ -129,7 +138,7 @@
 /********************* Behavioral Characteristics *************/
 // delay for the main sensing loop
 // samples are sent this often in mS
-#define SEND_INTERVAL  5000
+#define SEND_INTERVAL  2000
 
 /* 
  * ADC gain for the gas sensor
@@ -141,6 +150,24 @@
  * 3.3v.  Therefore each ADC bit is 2mV from the sensor.)
  */
 #define GAIN_GAS       GAIN_TWO
+
+int16_t adc0, adc1, adc2, adc3;
+float adc3sum;
+int i;
+const float adcMax = 3336.00;
+const float invBeta = 1.00 / 3950.00;
+const float invT0 = 1.00 / (22.06 + 273.15);
+const float T0R = 107592.00;
+const float seriesR = 100000.00;
+float tempK, tempC, tempF;
+float thermR;
+
+/*
+ * ADC gain for the thermistor inputs
+ * NOTE: the gain value is for all channels.
+ * 
+ * 
+ */
 #define GAIN_THRM      GAIN_TWO
 
 /*
@@ -497,17 +524,36 @@ void loop() {
 #endif
 
 #ifdef THERMISTORS
-  int16_t adc0, adc1, adc2, adc3;
+
 
   adc0 = ads.readADC_SingleEnded(0);
   adc1 = ads.readADC_SingleEnded(1);
   adc2 = ads.readADC_SingleEnded(2);
-  adc3 = ads.readADC_SingleEnded(3);
+  adc3sum = 0;
+  for (i = 0; i < 5; i++)  {
+    adc3sum += ads.readADC_SingleEnded(3);
+    delay(10);
+  }
+  
+  adc3 = adc3sum / (float)5;
+    
+
   Serial.print("AIN0: "); Serial.println(adc0);
   Serial.print("AIN1: "); Serial.println(adc1);
   Serial.print("AIN2: "); Serial.println(adc2);
   Serial.print("AIN3: "); Serial.println(adc3);
   Serial.println(" ");
+
+  thermR = seriesR / ((adcMax/adc3) - 1);
+  Serial.print("thermR: "); Serial.println(thermR);
+  tempK = 1.00 / (invT0 + invBeta * (log(thermR/T0R)));
+  
+  tempC = tempK - 273.15;
+  tempF = ((9.0 * tempC) / 5.00) + 32.00;
+  Serial.print("tempK: "); Serial.println(tempK);
+  Serial.print("tempC: "); Serial.println(tempC);
+  Serial.print("tempF: "); Serial.println(tempF);
+  
 #endif
     
   /*
