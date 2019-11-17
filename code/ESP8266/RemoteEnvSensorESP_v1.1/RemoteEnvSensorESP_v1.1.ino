@@ -28,7 +28,7 @@
  * Pending:
  *
  * Now:
- * + invent the topics and sent the thermistor values via mqtt
+ * + include the topics in the thermistor structure ?
  * + implement a dynamic loop delay() to account for variable loop timing
  * 
  * Longer term:
@@ -43,6 +43,7 @@
  * v1.1:
  * + Created this new major version to consolidate functionality including neoPixel functionality
  * + Worked out the basic formulas for converting the thermistor input to physical units
+ * + added thermistor values to the mqtt/json packet
  * 
  * v0.9:
  * +adjusted WIFI LED pin number and sense in several places
@@ -113,8 +114,8 @@
 /********************* WiFi Access Point ***********************/
 // zimknives shop
 //#define WLAN_SSID       "WIFIDBF86C"
-////#define WLAN_PASS       "WFF7WQY771CH6ZRU"
-#define LOCATION        "basement-tech"
+//#define WLAN_PASS       "WFF7WQY771CH6ZRU"
+//#define LOCATION        "cnc_router"
 
 // home
 #define WLAN_SSID       "ZEther-2G"
@@ -133,6 +134,8 @@
 #define TOPIC_ENV_GASPR "zk-env/gaspr"
 #define TOPIC_ENV_GASRW  "zk-env/gasrw"
 #define TOPIC_STIME     "zk-env/time"
+#define TOPIC_ENV_THERM0    "zk-env/therm0"
+#define TOPIC_ENV_THERM1    "zk-env/therm1"
 
 /********************* Behavioral Characteristics *************/
 // delay for the main sensing loop
@@ -604,6 +607,26 @@ void loop() {
     Serial.print("Sending enviro-hum data: ");
     
     if (mqtt.publish(TOPIC_ENV_HUM, (char*) enviro.c_str()))
+      Serial.println("Publish ok");
+    else
+      Serial.println("Publish failed");
+#endif
+
+#ifdef THERMISTORS
+    enviro = json_sample("therm0", therms[0].tempC, LOCATION, timestamp);
+    
+    Serial.print("Sending enviro-therm0 data: ");
+    
+    if (mqtt.publish(TOPIC_ENV_THERM0, (char*) enviro.c_str()))
+      Serial.println("Publish ok");
+    else
+      Serial.println("Publish failed");
+      
+    enviro = json_sample("therm1", therms[1].tempC, LOCATION, timestamp);
+    
+    Serial.print("Sending enviro-therm1 data: ");
+    
+    if (mqtt.publish(TOPIC_ENV_THERM1, (char*) enviro.c_str()))
       Serial.println("Publish ok");
     else
       Serial.println("Publish failed");
