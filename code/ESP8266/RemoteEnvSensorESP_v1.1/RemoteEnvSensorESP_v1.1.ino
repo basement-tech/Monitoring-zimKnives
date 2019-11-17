@@ -22,17 +22,17 @@
  * Hardware:
  * Adafruit Huzzah ESP8266 module (for development; ESP-12S (AF P2491) target)
  * Adafruit HTU21D Temp/Humidity i2c module
- * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of Gas Sensor)
- * Adafruit MiCS5524 Gas Sensor (P3199)
+ * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
+ * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
  * 
  * Pending:
  *
  * Now:
- * + genericize the raw a/d readings using an array and function call (put behind the if a/d exists)
- * + implement the temp conversion function properly
+ * + invent the topics and sent the thermistor values via mqtt
  * + implement a dynamic loop delay() to account for variable loop timing
  * 
  * Longer term:
+ * + add separate calibrations to thermistor structure
  * + add the location to the json string
  * + decide if there is a way to dynamically configure the network/hardware config
  * + add flash based config file (json) (e.g. MQTT server, timezone, etc.) ... use EEPROM lib
@@ -105,10 +105,9 @@
 //#define UNUSED   16
 //
 // which hardware is actually connected?
-#define HTU21DF_P   // Is the temp/hum module present
-#define ADS1015_P   // Is the A/D present (for the gas reading)
-//#define MICS5524_P  // Is the gas sensor connected to the A/D ... requires ADS1015_P, not checked
-#define THERMISTORS // Are using the A/D to sense thermistors
+#define HTU21DF_P       // Is the temp/hum module present
+#define ADS1015_P       // Is the A/D present (for the gas reading)
+#define THERMISTORS  2  // Are using the A/D to sense thermistors, and how many
 
 
 /********************* WiFi Access Point ***********************/
@@ -141,7 +140,7 @@
 #define SEND_INTERVAL  2000
 
 /* 
- * ADC gain for the gas sensor
+ * ADC gain
  * 
  * With GAIN_TWO full scale is +/- 2.048 v according to the data sheet.
  * 12 bit adc(i.e. +/- 11-bits (2048)) results in a perfect 1 mV/bit.
@@ -149,26 +148,51 @@
  * that the sensor output stays within the limit of the ADC powered at
  * 3.3v.  Therefore each ADC bit is 2mV from the sensor.)
  */
-#define GAIN_GAS       GAIN_TWO
+#define ADC_GAIN       GAIN_TWO
+#define ADC_SAMPLES    5
+#define ADC_INTERVAL   10  /* mS between averaged samples */
 
-int16_t adc0, adc1, adc2, adc3;
-float adc3sum;
-int i;
-const float adcMax = 3336.00;
-const float invBeta = 1.00 / 3950.00;
-const float invT0 = 1.00 / (22.06 + 273.15);
-const float T0R = 107592.00;
-const float seriesR = 100000.00;
-float tempK, tempC, tempF;
-float thermR;
+int i, j;  /* looping parameters; not intended to be persistent */
+
+int16_t adc[4]; /* raw adc readings */
+float   adcsum;  /* accumulator used for averaging */
 
 /*
- * ADC gain for the thermistor inputs
- * NOTE: the gain value is for all channels.
+ * used to convert thermistor adc values to physical units
  * 
- * 
+ *   VS = 3.3V
+ *    |
+ *    /
+ *    \  seriesR
+ *    /
+ *    |
+ *    --- ADC input -> physically connected to adc[1] and adc [3]
+ *    |
+ *    /
+ *    \  thermR
+ *    /
+ *    |
+ *   GND
  */
-#define GAIN_THRM      GAIN_TWO
+const float adcMax = 3336.00;  /* more precise 3.3v, measured */
+const float invBeta = 1.00 / 3950.00;  /* thermistor beta parameter from the manufacturer */
+const float invT0 = 1.00 / (22.06 + 273.15);  /* 1/T0 in deg K, inverse of thermistor calibration point */
+const float T0R = 107592.00;  /* thermistor resistance at T0  */
+const float seriesR = 100000.00;  /* series resistor */
+
+struct thermistor  {
+  int adc_ch;
+  float tempK;
+  float tempC;
+  float tempF;
+  float thermR;
+};
+
+struct thermistor therms[THERMISTORS] =
+{
+  {1, 0, 0, 0, 0},
+  {3, 0, 0, 0, 0}
+};
 
 /*
  * convert the adc reading to PPM.
@@ -476,19 +500,10 @@ void setup() {
 #endif
 
 #ifdef ADS1015_P
-  // Setup the ADC for the gas sensor acquisition
+  // Setup the ADC for acquisition
   Serial.println("Connecting to ADC");
   ads.begin();
-#endif
-
-#ifdef MICS5524_P
-  // Set the gain of the gas sensor
-  ads.setGain(GAIN_GAS);
-#endif
-
-#ifdef THERMISTORS
-  // Set the gain of the a/d for the thermistors
-  ads.setGain(GAIN_THRM);
+  ads.setGain(ADC_GAIN); // Set the gain for all channels
 #endif
 
 }
@@ -512,47 +527,41 @@ void loop() {
   timeClient.update();
 
   /*
-   * read the physical sensors
+   * read the physical sensors, if they exist
    */
 #ifdef HTU21DF_P
   temp = htu.readTemperature() + TEMP_OFFSET;
   humidity = htu.readHumidity() + HUM_OFFSET;
 #endif
 
-#ifdef MICS5524_P
-  gas = ads.readADC_Differential_0_1();
+#ifdef ADS1015_P
+  for (i = 0; i < 4; i++)  {   /* loop through the adc channels */
+    adcsum = 0;
+    for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
+      adcsum += ads.readADC_SingleEnded(i);
+      delay(ADC_INTERVAL);
+    }
+    adc[i] = adcsum / ADC_SAMPLES;
+    Serial.print("ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i]);
+  }
+
+  Serial.println(" ");
+  
 #endif
 
 #ifdef THERMISTORS
-
-
-  adc0 = ads.readADC_SingleEnded(0);
-  adc1 = ads.readADC_SingleEnded(1);
-  adc2 = ads.readADC_SingleEnded(2);
-  adc3sum = 0;
-  for (i = 0; i < 5; i++)  {
-    adc3sum += ads.readADC_SingleEnded(3);
-    delay(10);
+  for(i = 0; i < THERMISTORS; i++)  {
+    Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
+    therms[i].thermR = seriesR / ((adcMax/adc[therms[i].adc_ch]) - 1);
+    Serial.print("thermR: "); Serial.print(therms[i].thermR);
+    therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
+  
+    therms[i].tempC = therms[i].tempK - 273.15;
+    therms[i].tempF = ((9.0 * therms[i].tempC) / 5.00) + 32.00;
+    Serial.print(", tempK: "); Serial.print(therms[i].tempK);
+    Serial.print(", tempC: "); Serial.print(therms[i].tempC);
+    Serial.print(", tempF: "); Serial.println(therms[i].tempF);
   }
-  
-  adc3 = adc3sum / (float)5;
-    
-
-  Serial.print("AIN0: "); Serial.println(adc0);
-  Serial.print("AIN1: "); Serial.println(adc1);
-  Serial.print("AIN2: "); Serial.println(adc2);
-  Serial.print("AIN3: "); Serial.println(adc3);
-  Serial.println(" ");
-
-  thermR = seriesR / ((adcMax/adc3) - 1);
-  Serial.print("thermR: "); Serial.println(thermR);
-  tempK = 1.00 / (invT0 + invBeta * (log(thermR/T0R)));
-  
-  tempC = tempK - 273.15;
-  tempF = ((9.0 * tempC) / 5.00) + 32.00;
-  Serial.print("tempK: "); Serial.println(tempK);
-  Serial.print("tempC: "); Serial.println(tempC);
-  Serial.print("tempF: "); Serial.println(tempF);
   
 #endif
     
