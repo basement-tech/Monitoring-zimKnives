@@ -691,7 +691,13 @@ void loop() {
     LMQTTConnect(false);
   }
 
-  Serial.print("Time used in loop: "); Serial.println(millis() - previousMillis);
-  delay(SEND_INTERVAL - (millis() - previousMillis));
-  
+  /*
+   * check to see if millis() rolled over before the delay call
+   */
+  currentMillis = millis();
+  if(currentMillis < previousMillis)
+    delay(SEND_INTERVAL);
+  else
+    delay(SEND_INTERVAL - (currentMillis - previousMillis));
+  Serial.print("Time used in loop: "); Serial.println(currentMillis - previousMillis);
 }
