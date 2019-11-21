@@ -43,7 +43,7 @@
  * + Created this new major version to consolidate functionality including neoPixel functionality
  * + Worked out the basic formulas for converting the thermistor input to physical units
  * + added thermistor values to the mqtt/json packet
- * + implemented dynamic loop delay() to have consistent sample intervals
+ * + replaced a standard delay() at the end of loop() with a timer
  * 
  * v0.9:
  * +adjusted WIFI LED pin number and sense in several places
@@ -93,6 +93,7 @@
 #include <Adafruit_HTU21DF.h>
 #include <Wire.h>
 #include <Adafruit_ADS1015.h>
+#include <user_interface.h>  /* for os timer functionality */
 
 /********************* Hardware Connections ********************/
 //#define UNUSED   0  // built in LED on Huzzah
@@ -141,6 +142,16 @@
 // delay for the main sensing loop
 // samples are sent this often in mS
 #define SEND_INTERVAL  2000
+#define DATA_INTERVAL  3000
+
+/*
+ * set up the structure and callback() for the slower loop functionality
+ */
+os_timer_t sampleTimer; /* for the slower sample loop */
+bool sampleTimerOccured;
+void sampleTimerCallback(void *pArg)  {
+  sampleTimerOccured = true;
+}
 
 /*
  * use these to do more repeatable loop timing
@@ -452,6 +463,9 @@ void setup() {
   
   Serial.begin(115200);
 
+
+  
+  
 //#define NEW_STUFF
 #ifdef NEW_STUFF
   // Clean up any garbage on the input line
@@ -516,6 +530,13 @@ void setup() {
 #endif
 
   currentMillis = previousMillis = millis();
+
+  /*
+   * initialize the slower loop timer for data collection/publish
+   */
+  sampleTimerOccured = false;   
+  os_timer_setfn(&sampleTimer, sampleTimerCallback, NULL);  /* attach the callback */
+  os_timer_arm(&sampleTimer, DATA_INTERVAL, true);
 }
 
 /*
@@ -523,181 +544,188 @@ void setup() {
  */
 void loop() {
   /*
-   * keep track of milliseconds used and only delay at the end of the
-   * loop for the SEND_INTERVAL that wasn't used up
+   * keep track of milliseconds used in the loop
    */
   previousMillis = millis();
+
+  /*
+   * check for the data collection tick timer
+   */
+  if(sampleTimerOccured == true)  {
+    
+    Serial.println("Tick Occured");
   
-  /*
-   * Status the WIFI and set the LED indicator accordingly
-   */
-  if(WiFi.status() == WL_CONNECTED)
-    digitalWrite(WIFI_LED, LOW);
-  else {
-    digitalWrite(WIFI_LED, HIGH);
-    LWifiConnect(false);
-  }
-
-  // Service the NTP client. Updates happen much slower per defaults.
-  timeClient.update();
-
-  /*
-   * read the physical sensors, if they exist
-   */
-#ifdef HTU21DF_P
-  temp = htu.readTemperature() + TEMP_OFFSET;
-  humidity = htu.readHumidity() + HUM_OFFSET;
-#endif
-
-#ifdef ADS1015_P
-  for (i = 0; i < 4; i++)  {   /* loop through the adc channels */
-    adcsum = 0;
-    for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
-      adcsum += ads.readADC_SingleEnded(i);
-      delay(ADC_INTERVAL);
+    /*
+     * Status the WIFI and set the LED indicator accordingly
+     */
+    if(WiFi.status() == WL_CONNECTED)
+      digitalWrite(WIFI_LED, LOW);
+    else {
+      digitalWrite(WIFI_LED, HIGH);
+      LWifiConnect(false);
     }
-    adc[i] = adcsum / ADC_SAMPLES;
-    Serial.print("ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i]);
-  }
-
-  Serial.println(" ");
   
-#endif
-
-#ifdef THERMISTORS
-  for(i = 0; i < THERMISTORS; i++)  {
-    Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
-    therms[i].thermR = seriesR / ((adcMax/adc[therms[i].adc_ch]) - 1);
-    Serial.print("thermR: "); Serial.print(therms[i].thermR);
-    therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
+    // Service the NTP client. Updates happen much slower per defaults.
+    timeClient.update();
   
-    therms[i].tempC = therms[i].tempK - 273.15;
-    therms[i].tempF = ((9.0 * therms[i].tempC) / 5.00) + 32.00;
-    Serial.print(", tempK: "); Serial.print(therms[i].tempK);
-    Serial.print(", tempC: "); Serial.print(therms[i].tempC);
-    Serial.print(", tempF: "); Serial.println(therms[i].tempF);
-  }
-  
-#endif
-    
-  /*
-   * Publish the data
-   */
-  if (mqtt.connected()) {
-
     /*
-     * Prepare and send the sample time ... do this first to be close to the acquition.
+     * read the physical sensors, if they exist
      */
-    timestamp = timeClient.getFormattedTime();
-
-    enviro = json_sample("tstamp", timestamp, LOCATION, timestamp);
+  #ifdef HTU21DF_P
+    temp = htu.readTemperature() + TEMP_OFFSET;
+    humidity = htu.readHumidity() + HUM_OFFSET;
+  #endif
+  
+  #ifdef ADS1015_P
+    for (i = 0; i < 4; i++)  {   /* loop through the adc channels */
+      adcsum = 0;
+      for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
+        adcsum += ads.readADC_SingleEnded(i);
+        delay(ADC_INTERVAL);
+      }
+      adc[i] = adcsum / ADC_SAMPLES;
+      Serial.print("ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i]);
+    }
     
-    Serial.print("Sending sample time: ");
-    if (mqtt.publish(TOPIC_STIME, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
+  #endif
+  
+  #ifdef THERMISTORS
+    for(i = 0; i < THERMISTORS; i++)  {
+      Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
+      therms[i].thermR = seriesR / ((adcMax/adc[therms[i].adc_ch]) - 1);
+      Serial.print("thermR: "); Serial.print(therms[i].thermR);
+      therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
+    
+      therms[i].tempC = therms[i].tempK - 273.15;
+      therms[i].tempF = ((9.0 * therms[i].tempC) / 5.00) + 32.00;
+      Serial.print(", tempK: "); Serial.print(therms[i].tempK);
+      Serial.print(", tempC: "); Serial.print(therms[i].tempC);
+      Serial.print(", tempF: "); Serial.println(therms[i].tempF);
+    }
+    
+  #endif
       
-#ifdef HTU21DF_P
-
-    enviro = json_sample("temp", temp, LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-temp data: ");
-    
-    if (mqtt.publish(TOPIC_ENV_TEMP, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-
-
     /*
-     * prep and send the humidity data
+     * Publish the data
      */
-     
-    enviro = json_sample("humidity", humidity, LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-hum data: ");
-    
-    if (mqtt.publish(TOPIC_ENV_HUM, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-#endif
-
-#ifdef THERMISTORS
-    enviro = json_sample("therm0", therms[0].tempC, LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-therm0 data: ");
-    
-    if (mqtt.publish(TOPIC_ENV_THERM0, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
+    if (mqtt.connected()) {
+  
+      /*
+       * Prepare and send the sample time ... do this first to be close to the acquition.
+       */
+      timestamp = timeClient.getFormattedTime();
+  
+      enviro = json_sample("tstamp", timestamp, LOCATION, timestamp);
       
-    enviro = json_sample("therm1", therms[1].tempC, LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-therm1 data: ");
-    
-    if (mqtt.publish(TOPIC_ENV_THERM1, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-#endif
-
-#ifdef MICS5524_P
-    /*
-     * send the raw gas sensor data
-     */
-    enviro = json_sample("gasrw", gas, LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-gasrw data: ");
-    
-    if (mqtt.publish(TOPIC_ENV_GASRW, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-
-    /*
-     * send the gas sensor data converted to PPM as if CO
-     */   
-    enviro = json_sample("gasco", gas_v_to_ppm(CARBMONO, gas), LOCATION, timestamp);
+      Serial.print("Sending sample time: ");
+      if (mqtt.publish(TOPIC_STIME, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
         
-    Serial.print("Sending enviro-gasco data as Carbon Monoxide PPM: ");
-    
-    if (mqtt.publish(TOPIC_ENV_GASCO, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-
+  #ifdef HTU21DF_P
+  
+      enviro = json_sample("temp", temp, LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-temp data: ");
+      
+      if (mqtt.publish(TOPIC_ENV_TEMP, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  
+  
+      /*
+       * prep and send the humidity data
+       */
+       
+      enviro = json_sample("humidity", humidity, LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-hum data: ");
+      
+      if (mqtt.publish(TOPIC_ENV_HUM, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  #endif
+  
+  #ifdef THERMISTORS
+      enviro = json_sample("therm0", therms[0].tempC, LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-therm0 data: ");
+      
+      if (mqtt.publish(TOPIC_ENV_THERM0, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+        
+      enviro = json_sample("therm1", therms[1].tempC, LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-therm1 data: ");
+      
+      if (mqtt.publish(TOPIC_ENV_THERM1, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  #endif
+  
+  #ifdef MICS5524_P
+      /*
+       * send the raw gas sensor data
+       */
+      enviro = json_sample("gasrw", gas, LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-gasrw data: ");
+      
+      if (mqtt.publish(TOPIC_ENV_GASRW, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  
+      /*
+       * send the gas sensor data converted to PPM as if CO
+       */   
+      enviro = json_sample("gasco", gas_v_to_ppm(CARBMONO, gas), LOCATION, timestamp);
+          
+      Serial.print("Sending enviro-gasco data as Carbon Monoxide PPM: ");
+      
+      if (mqtt.publish(TOPIC_ENV_GASCO, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  
+      /*
+       * send the gas sensor data converted to PPM as if Propane
+       */
+      enviro = json_sample("gaspr", gas_v_to_ppm(PROPANE, gas), LOCATION, timestamp);
+      
+      Serial.print("Sending enviro-gaspr data as Propane PPM: ");
+      
+      if (mqtt.publish(TOPIC_ENV_GASPR, (char*) enviro.c_str()))
+        Serial.println("Publish ok");
+      else
+        Serial.println("Publish failed");
+  #endif
+  
+      
+    }
     /*
-     * send the gas sensor data converted to PPM as if Propane
+     * if the mqtt connection was lost, attempt to reconnect
      */
-    enviro = json_sample("gaspr", gas_v_to_ppm(PROPANE, gas), LOCATION, timestamp);
-    
-    Serial.print("Sending enviro-gaspr data as Propane PPM: ");
-    
-    if (mqtt.publish(TOPIC_ENV_GASPR, (char*) enviro.c_str()))
-      Serial.println("Publish ok");
-    else
-      Serial.println("Publish failed");
-#endif
+    else  {
+      LMQTTConnect(false);
+    }
+  
+    /*
+     * how much time used in the slow loop
+     */
+    currentMillis = millis();
+    Serial.print("Time used in loop: "); Serial.println(currentMillis - previousMillis);
 
+    Serial.println();
     
-  }
-  /*
-   * if the mqtt connection was lost, attempt to reconnect
-   */
-  else  {
-    LMQTTConnect(false);
+    sampleTimerOccured = false;
   }
 
-  /*
-   * check to see if millis() rolled over before the delay call
-   */
-  currentMillis = millis();
-  if(currentMillis < previousMillis)
-    delay(SEND_INTERVAL);
-  else
-    delay(SEND_INTERVAL - (currentMillis - previousMillis));
-  Serial.print("Time used in loop: "); Serial.println(currentMillis - previousMillis);
+  yield();
 }
