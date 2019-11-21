@@ -148,8 +148,8 @@
 /********************* Behavioral Characteristics *************/
 // delay for the main sensing loop
 // samples are sent this often in mS
-#define MQTT_INTERVAL  5000 // Currently not used
-#define ACQ_INTERVAL   250  // A/D sampling interval
+#define MQTT_INTERVAL  3000  // Currently not used
+#define ACQ_INTERVAL   250   // A/D sampling interval
 
 // display debug messages in the loop if defined
 // the messages really don't take much time, however ... maybe 10 mS
@@ -193,16 +193,20 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * 3.3v.  Therefore each ADC bit is 2mV from the sensor.)
  */
 #define ADC_GAIN         GAIN_TWO
+#define ADC_CHANNELS     4  /* number of channels in the ADC */
+
 #define ADC_SAMPLES      3  /* just for electrical noise filtering */
 #define ADC_INTERVAL     5  /* mS between averaged samples */
-#define ADC_AVG_SAMPLES  4  /* samples to be averaged for mqtt publish */
+double  adcsum = 0;         /* accumulator used for averaging */
 
-int adc_count;  /* number of samples acquired before average is calculated */
+#define ADC_AVG_SAMPLES  4  /* samples to be averaged for running average */
 
 int i, j, k;  /* looping parameters; not intended to be persistent */
 
-int16_t adc[4]; /* raw adc readings */
-float   adcsum;  /* accumulator used for averaging */
+int16_t adc[ADC_CHANNELS][ADC_AVG_SAMPLES]; /* raw adc readings */
+int     adc_ravg[ADC_CHANNELS];  /* running average of adc channels */
+
+int adc_count = 0;  /* number of samples acquired before average is calculated */
 
 #ifdef ADS1015_P
 // Instantiate the ADC for the gas sensor
@@ -571,6 +575,15 @@ void setup() {
   Serial.println("Connecting to ADC");
   ads.begin();
   ads.setGain(ADC_GAIN); // Set the gain for all channels
+
+  /*
+   * fill up the array for running average with zero's
+   */
+  for (i = 0; i < ADC_CHANNELS; i++)  {
+    for(j = 0; j < ADC_AVG_SAMPLES; j++)  {
+      adc[i][j] = (float)0;
+    }
+  }
 #endif
 
   currentMillis = previousMillis = millis();
@@ -617,18 +630,44 @@ void loop() {
   #endif
   
   #ifdef ADS1015_P
-    for (i = 0; i < 4; i++)  {   /* loop through the adc channels */
+    /*
+     * read through the adc  channels, averaging the number of
+     * acquitisions per sample  (noise filtering)
+     */
+    for (i = 0; i < ADC_CHANNELS; i++)  {   /* loop through the adc channels */
       adcsum = 0;
       for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
         adcsum += ads.readADC_SingleEnded(i);
         delay(ADC_INTERVAL);
       }
-      adc[i] = adcsum / ADC_SAMPLES;
+      adc[i][ADC_AVG_SAMPLES-1] = round(adcsum / ADC_SAMPLES); // put it in the last running average slot
     #ifdef FL_DEBUG_MSG
-      Serial.print("ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i]);
+      Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i][ADC_AVG_SAMPLES-1]);
     #endif
     }
-    
+
+    /*
+     * calculate the running average
+     */
+    for (i = 0; i < ADC_CHANNELS; i++)  {
+      adcsum = 0;
+      for(j = 0; j < ADC_AVG_SAMPLES; j++)  {
+        adcsum += adc[i][j];       
+        if(j > 0)
+          adc[i][j-1] = adc[i][j];
+    #ifdef FL_DEBUG_MSG
+      Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("]");
+      Serial.print("["); Serial.print(j); Serial.print("] = ");
+      Serial.println(adc[i][j]);
+    #endif
+      }
+      adc_ravg[i] = round(adcsum / ADC_AVG_SAMPLES);
+    #ifdef FL_DEBUG_MSG
+      Serial.print("Average ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc_ravg[i]);
+    #endif
+    }
+
+  
   #endif
   
   #ifdef THERMISTORS
@@ -636,7 +675,7 @@ void loop() {
     #ifdef FL_DEBUG_MSG
       Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
     #endif
-      therms[i].thermR = seriesR / ((adcMax/adc[therms[i].adc_ch]) - 1);
+      therms[i].thermR = seriesR / ((adcMax/adc_ravg[therms[i].adc_ch]) - 1);
     #ifdef FL_DEBUG_MSG
       Serial.print("thermR: "); Serial.print(therms[i].thermR);
     #endif
@@ -652,8 +691,7 @@ void loop() {
     }
     
   #endif
-      
-    
+         
     if(adc_count < ADC_AVG_SAMPLES)
       adc_count++;
     else  {
@@ -673,7 +711,7 @@ void loop() {
   #endif
     acqTimerOccured = false;
   }  /* end of acquisition loop */
-  
+
   /*
    * check for the publish/slower tick timer
    */
