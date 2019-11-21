@@ -29,6 +29,10 @@
  *
  * Now:
  * + include the topics in the thermistor structure ?
+ * + add averaging for the mqtt send versus the neoPixel status fun
+ * + blink the WIFI connected LED for heartbeat
+ * + add current monitoring
+ * + add neoPixel status indications
  * 
  * Longer term:
  * + add separate calibrations to thermistor structure
@@ -44,6 +48,7 @@
  * + Worked out the basic formulas for converting the thermistor input to physical units
  * + added thermistor values to the mqtt/json packet
  * + replaced a standard delay() at the end of loop() with a timer
+ * + added a faster acquisition timer/loop
  * 
  * v0.9:
  * +adjusted WIFI LED pin number and sense in several places
@@ -141,8 +146,13 @@
 /********************* Behavioral Characteristics *************/
 // delay for the main sensing loop
 // samples are sent this often in mS
-#define SEND_INTERVAL  2000
-#define DATA_INTERVAL  3000
+#define MQTT_INTERVAL  5000 // Currently not used
+#define ACQ_INTERVAL   250  // A/D sampling interval
+
+// display debug messages in the loop if defined
+// the messages really don't take much time, however ... maybe 10 mS
+#define L_DEBUG_MSG
+//#define FL_DEBUG_MSG  // beware, if ACQ_INTERVAL is small, this will pump out a lot of messages
 
 /*
  * set up the structure and callback() for the slower loop functionality
@@ -153,6 +163,15 @@ void sampleTimerCallback(void *pArg)  {
   sampleTimerOccured = true;
 }
 
+/*
+ * faster loop
+ */
+os_timer_t acqTimer; /* for the slower sample loop */
+bool acqTimerOccured;
+void acqTimerCallback(void *pArg)  {
+  acqTimerOccured = true;
+}
+ 
 /*
  * use these to do more repeatable loop timing
  * only delay the amount of the SEND_INTERVAL that wasn't used up by other calls
@@ -171,11 +190,14 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * that the sensor output stays within the limit of the ADC powered at
  * 3.3v.  Therefore each ADC bit is 2mV from the sensor.)
  */
-#define ADC_GAIN       GAIN_TWO
-#define ADC_SAMPLES    5
-#define ADC_INTERVAL   10  /* mS between averaged samples */
+#define ADC_GAIN         GAIN_TWO
+#define ADC_SAMPLES      3  /* just for electrical noise filtering */
+#define ADC_INTERVAL     5  /* mS between averaged samples */
+#define ADC_AVG_SAMPLES  4  /* samples to be averaged for mqtt publish */
 
-int i, j;  /* looping parameters; not intended to be persistent */
+int adc_count;  /* number of samples acquired before average is calculated */
+
+int i, j, k;  /* looping parameters; not intended to be persistent */
 
 int16_t adc[4]; /* raw adc readings */
 float   adcsum;  /* accumulator used for averaging */
@@ -484,10 +506,7 @@ String   enviro, timestamp;  /* pointer to the MQTT payload */
 void setup() {
   int i = 0;
   
-  Serial.begin(115200);
-
-
-  
+  Serial.begin(115200);  
   
 //#define NEW_STUFF
 #ifdef NEW_STUFF
@@ -554,43 +573,39 @@ void setup() {
 
   currentMillis = previousMillis = millis();
 
+  adc_count = 0;
+  
   /*
    * initialize the slower loop timer for data collection/publish
    */
   sampleTimerOccured = false;   
   os_timer_setfn(&sampleTimer, sampleTimerCallback, NULL);  /* attach the callback */
-  os_timer_arm(&sampleTimer, DATA_INTERVAL, true);
+  os_timer_arm(&sampleTimer, MQTT_INTERVAL, true);
+
+  /*
+   * initialize the faster, acquisition loop timer for data collection/publish
+   */
+  acqTimerOccured = false;   
+  os_timer_setfn(&acqTimer, acqTimerCallback, NULL);  /* attach the callback */
+  os_timer_arm(&acqTimer, ACQ_INTERVAL, true);
 }
 
 /*
  * ***************  LOOP  ***************
  */
 void loop() {
-  /*
-   * keep track of milliseconds used in the loop
-   */
-  previousMillis = millis();
 
   /*
-   * check for the data collection tick timer
+   * check for the faster, acquisition time
+   * at this writing, th eloop is taking about 190 mS
+   * 
    */
-  if(sampleTimerOccured == true)  {
-    
-    Serial.println("Tick Occured");
-  
+  if(acqTimerOccured == true)  {
     /*
-     * Status the WIFI and set the LED indicator accordingly
+     * keep track of milliseconds used in the fast loop
      */
-    if(WiFi.status() == WL_CONNECTED)
-      digitalWrite(WIFI_LED, LOW);
-    else {
-      digitalWrite(WIFI_LED, HIGH);
-      LWifiConnect(false);
-    }
-  
-    // Service the NTP client. Updates happen much slower per defaults.
-    timeClient.update();
-  
+    previousMillis = millis();
+    
     /*
      * read the physical sensors, if they exist
      */
@@ -607,27 +622,77 @@ void loop() {
         delay(ADC_INTERVAL);
       }
       adc[i] = adcsum / ADC_SAMPLES;
+    #ifdef FL_DEBUG_MSG
       Serial.print("ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i]);
+    #endif
     }
     
   #endif
   
   #ifdef THERMISTORS
     for(i = 0; i < THERMISTORS; i++)  {
+    #ifdef FL_DEBUG_MSG
       Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
+    #endif
       therms[i].thermR = seriesR / ((adcMax/adc[therms[i].adc_ch]) - 1);
+    #ifdef FL_DEBUG_MSG
       Serial.print("thermR: "); Serial.print(therms[i].thermR);
+    #endif
       therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
     
       therms[i].tempC = therms[i].tempK - 273.15;
       therms[i].tempF = ((9.0 * therms[i].tempC) / 5.00) + 32.00;
+    #ifdef FL_DEBUG_MSG
       Serial.print(", tempK: "); Serial.print(therms[i].tempK);
       Serial.print(", tempC: "); Serial.print(therms[i].tempC);
       Serial.print(", tempF: "); Serial.println(therms[i].tempF);
+    #endif
     }
     
   #endif
       
+    
+    if(adc_count < ADC_AVG_SAMPLES)
+      adc_count++;
+    else  {
+      adc_count = 0;
+    #ifdef FL_DEBUG_MSG
+      Serial.println("Acq average count reached");
+    #endif
+    }
+
+    /*
+     * how much time used in theloop
+     */
+    currentMillis = millis();
+  #ifdef FL_DEBUG_MSG
+    Serial.print("Time used in loop: "); Serial.println(currentMillis - previousMillis);
+    Serial.println();
+  #endif
+    acqTimerOccured = false;
+  }  /* end of acquisition loop */
+  
+  /*
+   * check for the publish/slower tick timer
+   */
+  if(sampleTimerOccured == true)  {
+
+
+    Serial.println("Tick Occured");
+  
+    /*
+     * Status the WIFI and set the LED indicator accordingly
+     */
+    if(WiFi.status() == WL_CONNECTED)
+      digitalWrite(WIFI_LED, LOW);
+    else {
+      digitalWrite(WIFI_LED, HIGH);
+      LWifiConnect(false);
+    }
+  
+    // Service the NTP client. Updates happen much slower per defaults.
+    timeClient.update();
+
     /*
      * Publish the data
      */
@@ -639,23 +704,37 @@ void loop() {
       timestamp = timeClient.getFormattedTime();
   
       enviro = json_sample("tstamp", timestamp, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending sample time: ");
+    #endif
       if (mqtt.publish(TOPIC_STIME, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
         
   #ifdef HTU21DF_P
   
       enviro = json_sample("temp", temp, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-temp data: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_TEMP, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   
   
       /*
@@ -663,33 +742,54 @@ void loop() {
        */
        
       enviro = json_sample("humidity", humidity, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-hum data: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_HUM, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   #endif
   
   #ifdef THERMISTORS
       enviro = json_sample("therm0", therms[0].tempC, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-therm0 data: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_THERM0, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
         
       enviro = json_sample("therm1", therms[1].tempC, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-therm1 data: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_THERM1, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   #endif
   
   #ifdef MICS5524_P
@@ -697,37 +797,57 @@ void loop() {
        * send the raw gas sensor data
        */
       enviro = json_sample("gasrw", gas, LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gasrw data: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_GASRW, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   
       /*
        * send the gas sensor data converted to PPM as if CO
        */   
       enviro = json_sample("gasco", gas_v_to_ppm(CARBMONO, gas), LOCATION, timestamp);
-          
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gasco data as Carbon Monoxide PPM: ");
+    #endif
       
       if (mqtt.publish(TOPIC_ENV_GASCO, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   
       /*
        * send the gas sensor data converted to PPM as if Propane
        */
       enviro = json_sample("gaspr", gas_v_to_ppm(PROPANE, gas), LOCATION, timestamp);
-      
+    #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gaspr data as Propane PPM: ");
-      
+    #endif
       if (mqtt.publish(TOPIC_ENV_GASPR, (char*) enviro.c_str()))
-        Serial.println("Publish ok");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
       else
-        Serial.println("Publish failed");
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
   #endif
   
       
@@ -739,16 +859,10 @@ void loop() {
       LMQTTConnect(false);
     }
   
-    /*
-     * how much time used in the slow loop
-     */
-    currentMillis = millis();
-    Serial.print("Time used in loop: "); Serial.println(currentMillis - previousMillis);
 
-    Serial.println();
     
     sampleTimerOccured = false;
-  }
+  }  /* end of slow loop */
 
   yield();
-}
+} /* end of loop */
