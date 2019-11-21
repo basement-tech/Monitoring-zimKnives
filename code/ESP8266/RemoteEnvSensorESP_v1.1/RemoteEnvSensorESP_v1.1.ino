@@ -160,6 +160,9 @@ void sampleTimerCallback(void *pArg)  {
 unsigned long currentMillis = 0, previousMillis = 0;
 
 /* 
+ * ADS1015 12-bit (i2c) ADC
+ * ------------------------
+ * 
  * ADC gain
  * 
  * With GAIN_TWO full scale is +/- 2.048 v according to the data sheet.
@@ -177,7 +180,14 @@ int i, j;  /* looping parameters; not intended to be persistent */
 int16_t adc[4]; /* raw adc readings */
 float   adcsum;  /* accumulator used for averaging */
 
+#ifdef ADS1015_P
+// Instantiate the ADC for the gas sensor
+Adafruit_ADS1015 ads;
+#endif
+
 /*
+ * THERMISTOR
+ * ----------
  * used to convert thermistor adc values to physical units
  * 
  *   VS = 3.3V
@@ -215,6 +225,8 @@ struct thermistor therms[THERMISTORS] =
 };
 
 /*
+ * MiCS5524 GAS SENSOR
+ * -------------------
  * convert the adc reading to PPM.
  * use the appropriate formula for different gasses.
  * remember that the sensor cannot distinguish which gas is causing
@@ -272,10 +284,23 @@ float gas_v_to_ppm(int formula, float bits)  {
   return ppm;
 }
 
-// seconds to get from Greenwich to CST
+
+/* 
+ *  NIST NETWORK TIME
+ *  -----------------
+ *  seconds to get from Greenwich to CST
+ */
 #define TZ_OFFSET      -21600
 
-/* Temp and Humidity calibration
+// Instantiate the UDP and Network Time Protocol
+WiFiUDP ntpUDP;  
+NTPClient timeClient(ntpUDP, TZ_OFFSET);
+
+
+/* 
+ * HTU21D Temp/Humidity (I2C)
+ * --------------------------
+ * Temp and Humidity calibration
  * I measured the temp at 72, 44, 27 deg F.  The sensor was
  * about the same and 1.41 deg C  too high on average.  I don't have
  * a good way to measure humidity.
@@ -283,46 +308,17 @@ float gas_v_to_ppm(int formula, float bits)  {
 #define TEMP_OFFSET   -1.41
 #define HUM_OFFSET     0
 
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.println("Message back from broker");
-  Serial.println(topic);
-}
-
-/*
- * Instantiate the various connection and hardware classes
- */
-// Instantiate an ESP8266 WiFiClient class to connect to the MQTT server.
-WiFiClient WiFiclient;
-
-// Instantiate the UDP and Network Time Protocol
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, TZ_OFFSET);
-
-// Setup the MQTT client class by passing in the WiFi client and MQTT server
-PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
-
 #ifdef HTU21DF_P
 // Instantiate the temp/humidity sensor
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 #endif
 
-#ifdef ADS1015_P
-// Instantiate the ADC for the gas sensor
-Adafruit_ADS1015 ads;
-#endif
+/*
+ * WIFI
+ */
 
-// Convert a mac address to a string
-String macToStr(const uint8_t* mac)
-{
-  String result;
-  for (int i = 0; i < 6; ++i) {
-    result += String(mac[i], 16);
-    if (i < 5)
-      result += ':';
-  }
-  return result;
-}
-
+// Instantiate an ESP8266 WiFiClient class to connect to the MQTT server.
+WiFiClient WiFiclient;
 
 /* 
  *  Connect to WiFi access point.
@@ -350,6 +346,33 @@ wl_status_t  LWifiConnect(bool first)  {
 
   return(WiFi.status());
 }
+
+
+/*
+ * MQTT
+ * ----
+ */
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.println("Message back from broker");
+  Serial.println(topic);
+}
+
+// Setup the MQTT client class by passing in the WiFi client and MQTT server
+PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
+
+// Convert a mac address to a string
+String macToStr(const uint8_t* mac)
+{
+  String result;
+  for (int i = 0; i < 6; ++i) {
+    result += String(mac[i], 16);
+    if (i < 5)
+      result += ':';
+  }
+  return result;
+}
+
 
 /*
  * Connect or re-connect to the mqtt data broker
