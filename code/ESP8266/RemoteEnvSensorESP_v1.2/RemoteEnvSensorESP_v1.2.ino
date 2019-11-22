@@ -28,6 +28,7 @@
  * Pending:
  *
  * Now:
+ * + potentially move the HTU21D read of temp and humidity to the slow loop
  * + include the topics in the thermistor structure ?
  * + add averaging for the mqtt send versus the neoPixel status fun
  * + blink the WIFI connected LED for heartbeat
@@ -43,7 +44,7 @@
  * + implement a red "failed" light
  * 
  * v1.2:
- * + started
+ * + created the data structure for the running average and implemented it
  * 
  * v1.1:
  * + Created this new major version to consolidate functionality including neoPixel functionality
@@ -115,8 +116,8 @@
 //
 // which hardware is actually connected?
 #define HTU21DF_P       // Is the temp/hum module present
-#define ADS1015_P       // Is the A/D present (for the gas reading)
-#define THERMISTORS  2  // Are using the A/D to sense thermistors, and how many
+#define ADS1015_P       // Is the A/D present
+#define THERMISTORS  2  // Are we using the A/D to sense thermistors, and how many
 
 
 /********************* WiFi Access Point ***********************/
@@ -146,14 +147,19 @@
 #define TOPIC_ENV_THERM1    "zk-env/therm1"
 
 /********************* Behavioral Characteristics *************/
-// delay for the main sensing loop
-// samples are sent this often in mS
+
+/*
+ * timer intervals for the main sensing loop
+ */
+
 #define MQTT_INTERVAL  3000  // Currently not used
 #define ACQ_INTERVAL   250   // A/D sampling interval
 
-// display debug messages in the loop if defined
-// the messages really don't take much time, however ... maybe 10 mS
-#define L_DEBUG_MSG
+/*
+ * display debug messages in the loop if defined
+ * the messages really don't take much time, however ... maybe 10 mS
+ */
+#define L_DEBUG_MSG     // for the loop driven by MQTT_INTERVAL
 //#define FL_DEBUG_MSG  // beware, if ACQ_INTERVAL is small, this will pump out a lot of messages
 
 /*
@@ -175,8 +181,7 @@ void acqTimerCallback(void *pArg)  {
 }
  
 /*
- * use these to do more repeatable loop timing
- * only delay the amount of the SEND_INTERVAL that wasn't used up by other calls
+ * for calculating loop timing during development
  */
 unsigned long currentMillis = 0, previousMillis = 0;
 
@@ -188,9 +193,16 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * 
  * With GAIN_TWO full scale is +/- 2.048 v according to the data sheet.
  * 12 bit adc(i.e. +/- 11-bits (2048)) results in a perfect 1 mV/bit.
- * (Note that the interface circuitry uses a voltage divider to insure
- * that the sensor output stays within the limit of the ADC powered at
- * 3.3v.  Therefore each ADC bit is 2mV from the sensor.)
+ * 
+ * Acquisition behavior:
+ * A timer based on ACQ_INTERVAL (above) triggers acqusition of the a/d channels.
+ * Multiple samples-per-sample can be specified by ADC_SAMPLES and
+ * ADC_INTERVAL.  This is meant to run fast and help with electrical noise,
+ * for example.
+ * 
+ * A running average is produced from the last ADC_AVG SAMPLES in a rotating buffer array
+ * per channel, adc[][].  Each ADC_AVG_SAMPLES an average is written to adc_ravg[].
+ * 
  */
 #define ADC_GAIN         GAIN_TWO
 #define ADC_CHANNELS     4  /* number of channels in the ADC */
@@ -204,9 +216,7 @@ double  adcsum = 0;         /* accumulator used for averaging */
 int i, j, k;  /* looping parameters; not intended to be persistent */
 
 int16_t adc[ADC_CHANNELS][ADC_AVG_SAMPLES]; /* raw adc readings */
-int     adc_ravg[ADC_CHANNELS];  /* running average of adc channels */
-
-int adc_count = 0;  /* number of samples acquired before average is calculated */
+int16_t adc_ravg[ADC_CHANNELS];  /* running average of adc channels */
 
 #ifdef ADS1015_P
 // Instantiate the ADC for the gas sensor
@@ -587,8 +597,6 @@ void setup() {
 #endif
 
   currentMillis = previousMillis = millis();
-
-  adc_count = 0;
   
   /*
    * initialize the slower loop timer for data collection/publish
@@ -612,7 +620,7 @@ void loop() {
 
   /*
    * check for the faster, acquisition time
-   * at this writing, th eloop is taking about 190 mS
+   * at this writing, the loop is taking about 190 mS
    * 
    */
   if(acqTimerOccured == true)  {
@@ -691,15 +699,6 @@ void loop() {
     }
     
   #endif
-         
-    if(adc_count < ADC_AVG_SAMPLES)
-      adc_count++;
-    else  {
-      adc_count = 0;
-    #ifdef FL_DEBUG_MSG
-      Serial.println("Acq average count reached");
-    #endif
-    }
 
     /*
      * how much time used in theloop
