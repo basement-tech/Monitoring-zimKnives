@@ -45,6 +45,8 @@
  * 
  * v1.2:
  * + created the data structure for the running average and implemented it
+ * + moved the HTU21D t/h read to the slow loop for this application
+ *   (It takes about 80mS to read it and I wanted the a/d acqusition to run 10X/sec)
  * 
  * v1.1:
  * + Created this new major version to consolidate functionality including neoPixel functionality
@@ -152,8 +154,8 @@
  * timer intervals for the main sensing loop
  */
 
-#define MQTT_INTERVAL  3000  // Currently not used
-#define ACQ_INTERVAL   250   // A/D sampling interval
+#define MQTT_INTERVAL  3000  // mS between publish's
+#define ACQ_INTERVAL    100  // A/D sampling interval (mS)
 
 /*
  * display debug messages in the loop if defined
@@ -207,11 +209,11 @@ unsigned long currentMillis = 0, previousMillis = 0;
 #define ADC_GAIN         GAIN_TWO
 #define ADC_CHANNELS     4  /* number of channels in the ADC */
 
-#define ADC_SAMPLES      3  /* just for electrical noise filtering */
-#define ADC_INTERVAL     5  /* mS between averaged samples */
+#define ADC_SAMPLES      2  /* just for electrical noise filtering */
+#define ADC_INTERVAL     1  /* mS between averaged samples */
 double  adcsum = 0;         /* accumulator used for averaging */
 
-#define ADC_AVG_SAMPLES  4  /* samples to be averaged for running average */
+#define ADC_AVG_SAMPLES  10  /* samples to be averaged for running average */
 
 int i, j, k;  /* looping parameters; not intended to be persistent */
 
@@ -629,13 +631,7 @@ void loop() {
      */
     previousMillis = millis();
     
-    /*
-     * read the physical sensors, if they exist
-     */
-  #ifdef HTU21DF_P
-    temp = htu.readTemperature() + TEMP_OFFSET;
-    humidity = htu.readHumidity() + HUM_OFFSET;
-  #endif
+
   
   #ifdef ADS1015_P
     /*
@@ -731,6 +727,16 @@ void loop() {
   
     // Service the NTP client. Updates happen much slower per defaults.
     timeClient.update();
+
+    /*
+     * read the physical sensors, if they exist
+     * to optimize the speed of the a/d, this is only
+     * read in the slow loop
+     */
+  #ifdef HTU21DF_P
+    temp = htu.readTemperature() + TEMP_OFFSET;
+    humidity = htu.readHumidity() + HUM_OFFSET;
+  #endif
 
     /*
      * Publish the data
