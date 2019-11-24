@@ -25,12 +25,26 @@
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
  * 
+ * Boards and Libraries:
+ * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
+ * http://arduino.esp8266.com/stable/package_esp8266com_index.json
+ * - Go to the Tools->Board->Board Manager ... (at the top of the board selection list)
+ * - Install "esp8266 by ESP8266 Community"
+ * 
+ * In Tools->Manage Libraries ... :
+ * - Install the Adafruit ADS1X15 by Adafruit
+ * - Install Adafruit HTU21DF by Adafruit
+ * - InstallPubSub Client by Nick O'Leary
+ * - Install NTP Client by Fabrice Weinberg
+ * - I may have missed one
+ * 
+ * I was building under IDE 1.6.7.  Upgraded to 1.8.10 and updated some libraries.  Still works
+ * 
  * Pending:
  *
  * Now:
  * + potentially move the HTU21D read of temp and humidity to the slow loop
  * + include the topics in the thermistor structure ?
- * + add averaging for the mqtt send versus the neoPixel status fun
  * + blink the WIFI connected LED for heartbeat
  * + add current monitoring
  * + add neoPixel status indications
@@ -45,6 +59,7 @@
  * 
  * v1.2:
  * + created the data structure for the running average and implemented it
+ * + MQTT send for a/d is running average
  * + moved the HTU21D t/h read to the slow loop for this application
  *   (It takes about 80mS to read it and I wanted the a/d acqusition to run 10X/sec)
  * 
