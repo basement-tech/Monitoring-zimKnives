@@ -15,7 +15,7 @@
  * 
  * RemoteEnvSensorESP
  * Daniel J. Zimmerman
- * 12/06/17 - 4/21/18
+ * 12/06/17 - 3/15/20
  * 
  * Firmware to acquire environmental parameters and send via mqtt to broker
  * 
@@ -199,10 +199,10 @@
 #define ACQ_INTERVAL      100  // A/D sampling interval (mS)
 
 #define RST_ON_WIFI_FAIL  false // If true, reset the device after RST_ON_WIFI_COUNT loops
-#define RST_ON_WIFI_COUNT 30   // Number of times through the main loop sample/publish timer
-#define INITIAL_WIFI_WAIT 10   // How long to wait for the initial connect (n 500 mS loops)
-#define RST_ON_MQTT_FAIL  true // If true, reset the device after RST_ON_MQTT_COUNT loops
-#define RST_ON_MQTT_COUNT 100
+#define RST_ON_WIFI_COUNT 30    // Number of times through the main loop sample/publish timer
+#define INITIAL_WIFI_WAIT 10    // How long to wait for the initial connect (n 500 mS loops)
+#define RST_ON_MQTT_FAIL  true  // If true, reset the device after RST_ON_MQTT_COUNT loops
+#define RST_ON_MQTT_COUNT 10
 
 /*
  * To count down the WiFi and/or MQTT failures
@@ -811,7 +811,7 @@ void loop() {
         if(--wifi_fails > 0)
           LWifiConnect(false);
         else  {
-          Serial.println("Resetting in 2 seconds");
+          Serial.println("Resetting in 2 seconds because of WiFi fail");
           delay(2000);
           ESP.restart();
         }
@@ -837,7 +837,8 @@ void loop() {
      * Publish the data
      */
     if (mqtt.connected()) {
-  
+      mqtt_fails = RST_ON_MQTT_COUNT; // reset the counter in case it was counting down
+      
       /*
        * Prepare and send the sample time ... do this first to be close to the acquition.
        */
@@ -991,15 +992,24 @@ void loop() {
   #endif
   
       
-    }
+    } /* end of mqtt connect check */
+    
     /*
      * if the mqtt connection was lost, attempt to reconnect
      */
-    else  {
-      LMQTTConnect(false);
+    else {
+      if(RST_ON_MQTT_FAIL)  {
+        if(--mqtt_fails > 0)
+          LMQTTConnect(false);
+        else  {
+          Serial.println("Resetting in 2 seconds because of MQTT fail");
+          delay(2000);
+          ESP.restart();
+        }
+      }
+      else
+        LMQTTConnect(false);
     }
-  
-
     
     sampleTimerOccured = false;
   }  /* end of slow loop */
