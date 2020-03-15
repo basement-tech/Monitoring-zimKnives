@@ -67,6 +67,7 @@
  * + adjusted the WIFI connect behavior.  In the beginning this code was for acquitision only.
  *   So, it didn't make sense to continue if WIFI wasn't connected (i.e. wait forever for connect).
  *   However, now there are some local functions, so continue, but retry the connect.
+ * + Added optional device reset on repeated mqtt connect failures
  * 
  * v1.2:
  * + created the data structure for the running average and implemented it
