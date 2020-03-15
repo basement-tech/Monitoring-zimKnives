@@ -56,11 +56,12 @@
  * + add flash based config file (json) (e.g. MQTT server, timezone, etc.) ... use EEPROM lib
  * + if the NIST time sync fails, annotate the time with an asterisk
  * + implement a red "failed" light
+ * + add the ability to reboot remotely from a data broker topic flag; maybe heartbeat
  * 
  * v1.3:
  * + add/rename the topics to accomodate the second, cnc router based data module
  * + clarified/added pin defines and added direction setup
- * + added a reboot on repeated failures of the mqtt connect
+ * + added a reboot on repeated failures of the wifi connect
  *   (analyzed the logs on the pi side and didn't see any indication that the
  *    broker is crashing.  Let's try the retry on this side.)
  * + adjusted the WIFI connect behavior.  In the beginning this code was for acquitision only.
