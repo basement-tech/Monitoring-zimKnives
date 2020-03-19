@@ -24,6 +24,7 @@
  * Adafruit HTU21D Temp/Humidity i2c module
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
+ * Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -46,7 +47,6 @@
  * + potentially move the HTU21D read of temp and humidity to the slow loop
  * + include the topics in the thermistor structure ?
  * + blink the WIFI connected LED for heartbeat
- * + add current monitoring
  * + add neoPixel status indications
  * 
  * Longer term:
@@ -68,6 +68,7 @@
  *   So, it didn't make sense to continue if WIFI wasn't connected (i.e. wait forever for connect).
  *   However, now there are some local functions, so continue, but retry the connect.
  * + Added optional device reset on repeated mqtt connect failures
+ * + Added conversion of the INA169 adc channel to amps and publish
  * 
  * v1.2:
  * + created the data structure for the running average and implemented it
@@ -145,11 +146,16 @@
 #define INPUT_14    14 // hardwired as an optically isolated input
 #define LED_PIN     15 // output pin for neopixel data
 //#define UNUSED    16
-//
-// which hardware is actually connected?
+
+/* 
+ *  which hardware is actually connected?
+ *  note: you have to manage dependencies yourself
+ *        (e.g. if no adc, thermistors and current not possible)
+ */
 #define HTU21DF_P       // Is the temp/hum module present
 #define ADS1015_P       // Is the A/D present
 #define THERMISTORS  2  // Are we using the A/D to sense thermistors, and how many
+#define INA169          // Is the current shunt present
 #define LED_COUNT   30  // Number of neopixels, 0 means not present
 
 
@@ -189,6 +195,7 @@
 #define TOPIC_STIME      "zk-cncrtr/time"
 #define TOPIC_ENV_THERM0 "zk-cncrtr/therm0"
 #define TOPIC_ENV_THERM1 "zk-cncrtr/therm1"
+#define TOPIC_ENV_AAMPS  "zk-cncrtr/aamps"
 
 
 /********************* Behavioral Characteristics *************/
@@ -260,7 +267,7 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * per channel, adc[][].  Each ADC_AVG_SAMPLES an average is written to adc_ravg[].
  * 
  */
-#define ADC_GAIN         GAIN_TWO
+#define ADC_GAIN         GAIN_TWO /* +/- 2.048 V  */
 #define ADC_CHANNELS     4  /* number of channels in the ADC */
 
 #define ADC_SAMPLES      2  /* just for electrical noise filtering */
@@ -278,6 +285,38 @@ int16_t adc_ravg[ADC_CHANNELS];  /* running average of adc channels */
 // Instantiate the ADC for the gas sensor
 Adafruit_ADS1015 ads;
 #endif
+
+/*
+ * return the volts per bit for the adc
+ * (note: may not be used in all calculations)
+ */
+float adc_V_per_bit(adsGain_t adc_gain)  {
+  float vpb = -1;
+  
+  switch(adc_gain) {
+    case GAIN_TWOTHIRDS:
+      vpb = 0.003;
+      break;
+    case GAIN_ONE:
+      vpb = 0.002;
+      break;
+    case GAIN_TWO:
+      vpb = 0.001;
+      break;
+    case GAIN_FOUR:
+      vpb = 0.0005;
+      break;
+    case GAIN_EIGHT:
+      vpb = 0.00025;
+      break;
+    case GAIN_SIXTEEN:
+      vpb = 0.000125;
+      break;
+    default:
+      break;
+  }
+  return(vpb);
+}
 
 /*
  * THERMISTOR
@@ -312,11 +351,59 @@ struct thermistor  {
   float thermR;
 };
 
+
 struct thermistor therms[THERMISTORS] =
 {
   {1, 0, 0, 0, 0},
   {3, 0, 0, 0, 0}
 };
+
+
+/*
+ * HIGH SIDE CURRENT MONITOR (INA169 based)
+ * 
+ * Shunt Output Voltage (input to INA169) = Current (Amps) * INA169_shunt_R
+ * E.g. INA169_shunt_R = 0.001, 1 A -> 1 mA
+ * 
+ * INA_169 Output Voltage = Current * INA169_shunt_R * (INA169_load_R/1000)
+ * Current (Amps) = ADC 
+ * 
+ * Voltage Gain   load_R
+ * ------------   ------
+ *       1          1K
+ *       2          2K
+ *      ...        ...
+ *      50         50K
+ *      68         68K   (used in this implementation)
+ *     100        100K
+ * 
+ * Range for this application:
+ * Combined motor current   Shunt Voltage   ADC Voltage In
+ * ----------------------   -------------   --------------
+ *         <0                    <0                0 (INA169 prevents <0 V)
+ *          0                     0                0
+ *        1 Amp                 1 mV             68 mV
+ *       20 Amps               20 mV             1.36V
+ * (designed to be on par with thermistor voltages ... i.e. compatible ADC gain)
+ */
+#define INA169_ADCCH 0  /* adc channel for ina169/shunt input */
+const float INA169_shunt_R = 0.001;  /* Current measuring shund resistor */
+const float INA169_load_R  = 68000;  /* Output load resistance */
+const float INA169_Vgain   = INA169_load_R / (float)1000;
+float       INA169_Aamps;  /* running average of current */
+
+/*
+ * Convert the input voltage to current in amps for the INA169 Current monitor
+ *                 adc voltage
+ *        -----------------------------------
+ *                           actual shunt voltage
+ *        -------------------------------------------------
+ *                                    i = v/r
+ *        -------------------------------------------------------------------
+ */
+float INA169_bits_to_amps(int adc_bits)  {
+  return(((adc_bits * adc_V_per_bit(ADC_GAIN))/INA169_Vgain) / INA169_shunt_R);
+}
 
 /*
  * MiCS5524 GAS SENSOR
@@ -713,8 +800,9 @@ void loop() {
      */
     previousMillis = millis();
     
-
-  
+    /*
+     * ACQUIRE AND CONVERT ALL OF THE DATA TO PHYSICAL UNITS
+     */ 
   #ifdef ADS1015_P
     /*
      * read through the adc  channels, averaging the number of
@@ -778,6 +866,10 @@ void loop() {
     
   #endif
 
+  #ifdef INA169
+    INA169_Aamps = INA169_bits_to_amps(adc_ravg[INA169_ADCCH]);
+  #endif
+
     /*
      * how much time used in theloop
      */
@@ -787,7 +879,7 @@ void loop() {
     Serial.println();
   #endif
     acqTimerOccured = false;
-  }  /* end of acquisition loop */
+  }  /* end of fast acquisition loop */
 
   /*
    * check for the publish/slower tick timer
@@ -835,7 +927,11 @@ void loop() {
   #endif
 
     /*
-     * Publish the data
+     * END OF ACQUISITION
+     */
+
+    /*
+     * PUBLISH ALL OF THE DATA VIA MQTT
      */
     if (mqtt.connected()) {
       mqtt_fails = RST_ON_MQTT_COUNT; // reset the counter in case it was counting down
@@ -932,6 +1028,24 @@ void loop() {
         Serial.println("Publish failed")
       #endif
         ;
+  #endif
+
+  #ifdef INA169
+      enviro = json_sample("INA_169_aamps", INA169_Aamps, LOCATION, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending INA_169_aamps data: ");
+    #endif
+    
+    if (mqtt.publish(TOPIC_ENV_AAMPS, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+    else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;      
   #endif
   
   #ifdef MICS5524_P
