@@ -132,6 +132,7 @@
 #include <Wire.h>
 #include <Adafruit_ADS1015.h>
 #include <user_interface.h>  /* for os timer functionality */
+#include <Adafruit_NeoPixel.h>
 
 
 /********************* Hardware Connections ********************/
@@ -144,7 +145,7 @@
 #define WIFI_LED    12 // output pin to indicate WIFI connect status
 #define ESTOP_PIN   13 // input to provide the status of the router estop
 #define INPUT_14    14 // hardwired as an optically isolated input
-#define LED_PIN     15 // output pin for neopixel data
+#define NEOPXL_PIN  15 // output pin for neopixel data
 //#define UNUSED    16
 
 /* 
@@ -152,11 +153,12 @@
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
  */
+#define WIFI_ON         // Should wifi be enabled; used for debug, not fully vetted
 #define HTU21DF_P       // Is the temp/hum module present
 #define ADS1015_P       // Is the A/D present
 #define THERMISTORS  2  // Are we using the A/D to sense thermistors, and how many
 #define INA169          // Is the current shunt present
-#define LED_COUNT   30  // Number of neopixels, 0 means not present
+#define NEOPIXELS       // neopixels are present
 
 
 /********************* WiFi Access Point ***********************/
@@ -465,6 +467,79 @@ float gas_v_to_ppm(int formula, float bits)  {
   return ppm;
 }
 
+/*
+ *  NEOPIXELS
+ *  ---------
+ */
+#define NEOPXL_COUNT  30
+/* NEOPXL_PIN defined above in hardware section */
+#define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
+#define NEOPXL_WAIT   50  /* time to wait after .show() */
+
+
+#ifdef NEOPIXELS
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
+#endif
+
+/*
+ * define a spectrum of colors from green to red for use with neopixels
+ * NOTE: It's intentional that white is last to alert the operator that
+ * the parameter being displayed is at the top of the range (like lightening)
+ */
+#define NEOPXL_PAL_MAX 12  /* a value, not a count */
+const uint8_t rgb_palette[13][3] = {
+   /* R   G   B */
+    {  0,  0,  0},  /* off */
+    {  0,255,  0},  /* green */
+    { 50,255,  0},
+    {100,255,  0},
+    {150,255,  0},
+    {200,255,  0},
+    {255,255,  0},  /* yellow */
+    {255,200,  0},
+    {255,150,  0},
+    {255,100,  0},
+    {255, 50,  0},
+    {255,  0,  0},  /* red */
+    {255,255,255}   /* white */
+  };
+
+/*
+ * Set the color of the whole neopixel strip.
+ * Scale the r, g, b values by brightness (0.0 -> 1.0).
+ * color_index indexes into the the rgb_palette[][] table.
+ * 
+ * expects global variable strip for neopixel class instance
+ * 
+ */
+void neopxl_color_palette_set(int color_index, float brightness)  {
+  int8_t i = NEOPXL_COUNT;
+  uint8_t r, g, b;
+
+  #ifdef FL_DEBUG_MSG
+      Serial.print("In neopxl_color_palette_set: color_index = ");Serial.println(color_index);
+  #endif 
+  r = rgb_palette[color_index][0] * brightness;
+  g = rgb_palette[color_index][1] * brightness;
+  b = rgb_palette[color_index][2] * brightness;
+    
+  for(i = 0; i < NEOPXL_COUNT; i++)  {
+    strip.setPixelColor(i, r, g, b); 
+  }
+  #ifdef FL_DEBUG_MSG
+      Serial.println("In neopxl_color_palette_set: done setting colors");
+  #endif 
+  
+  strip.show();
+  delay(NEOPXL_WAIT);
+
+  #ifdef FL_DEBUG_MSG
+      Serial.println("In neopxl_color_palette_set: after .show()");
+  #endif 
+}
+
+
+
 
 /* 
  *  NIST NETWORK TIME
@@ -473,10 +548,11 @@ float gas_v_to_ppm(int formula, float bits)  {
  */
 #define TZ_OFFSET      -21600
 
+#ifdef WIFI_ON
 // Instantiate the UDP and Network Time Protocol
 WiFiUDP ntpUDP;  
 NTPClient timeClient(ntpUDP, TZ_OFFSET);
-
+#endif
 
 /* 
  * HTU21D Temp/Humidity (I2C)
@@ -497,9 +573,10 @@ Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 /*
  * WIFI
  */
-
+#ifdef WIFI_ON
 // Instantiate an ESP8266 WiFiClient class to connect to the MQTT server.
 WiFiClient WiFiclient;
+
 
 /* 
  *  Connect to WiFi access point.
@@ -545,7 +622,7 @@ wl_status_t  LWifiConnect(bool first)  {
   
   return(wifi_status);
 }
-
+#endif
 
 /*
  * MQTT
@@ -556,9 +633,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println("Message back from broker");
   Serial.println(topic);
 }
-
-// Setup the MQTT client class by passing in the WiFi client and MQTT server
-PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
 
 // Convert a mac address to a string
 String macToStr(const uint8_t* mac)
@@ -571,6 +645,10 @@ String macToStr(const uint8_t* mac)
   }
   return result;
 }
+
+#ifdef WIFI_ON
+// Setup the MQTT client class by passing in the WiFi client and MQTT server
+PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
 
 
 /*
@@ -617,6 +695,7 @@ bool LMQTTConnect(bool first)  {
   }
   return(status);
 }
+#endif
 
 void delay_yield(int msecs)  {
   int i = 0;
@@ -686,45 +765,16 @@ void setup() {
 
   
   Serial.begin(115200);  
-  
-//#define NEW_STUFF
-#ifdef NEW_STUFF
-  // Clean up any garbage on the input line
-  while(Serial.available() > 0)
-    Serial.read();
-
-  // let all of the devices stabilize after power-up; use the time to allow char entry
-  Serial.println("");
-  Serial.println("Press any key in the next 5 seconds to enter configuration mode");
-
-  i = 10;
-  while((Serial.available() <= 0) && (i > 0))  {
-    Serial.print(i);
-    Serial.print(" ... ");
-    delay_yield(500);   
-    i--;
-  }
-  Serial.println("");
-  
-  if(Serial.available() > 0)  {
-    while(Serial.read() > 0); // read the interrupting char and any other garbage
-
-    /*
-     * Prompt and set the configuration values
-     */
-    Serial.println(" ... all done ... continuing  ...");
-  }
-#endif
-//delay_yield(1000);
 
   /*
    * Setup the direction of the three hardwired 3.3V I/O pins (hardwired as above)
    */
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(NEOPXL_PIN, OUTPUT);
   pinMode(ESTOP_PIN, INPUT);
   pinMode(INPUT_14, INPUT);
   // fourth is undefined/unused at this writing
-
+  
+#ifdef WIFI_ON
   /* 
    * Setup the LED for indicating Wifi connection and
    * connect to WiFi access point.
@@ -743,6 +793,7 @@ void setup() {
   
   // Setup the MQTT connection and attempt an initial publish
   LMQTTConnect(true);
+#endif
 
 #ifdef HTU21DF_P
   // Setup the temp and humidity sensor
@@ -765,6 +816,16 @@ void setup() {
       adc[i][j] = (float)0;
     }
   }
+#endif
+
+#ifdef NEOPIXELS
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
+  delay(500);
+  //strip.setBrightness(127); // out of 255
+  neopxl_color_palette_set(1, NEOPXL_BRT);  /* green */
+  delay(500);
+  neopxl_color_palette_set(0, NEOPXL_BRT);  /* off */
 #endif
 
   currentMillis = previousMillis = millis();
@@ -867,9 +928,25 @@ void loop() {
   #endif
 
   #ifdef INA169
+    /*
+     * convert the above read/calculated running average a/d reading
+     * to a current reading in amps
+     */
     INA169_Aamps = INA169_bits_to_amps(adc_ravg[INA169_ADCCH]);
+    #ifdef FL_DEBUG_MSG
+      Serial.print("INA169_Aamps = "); Serial.println(INA169_Aamps);
+    #endif
   #endif
 
+  #ifdef NEOPIXELS
+    /*
+     * write the current reading to a color on the neopixel strip
+     * NOTE: at this writing, I'm taking advantage of the fact that
+     * the number of colors is about the same as the range of amps expected.
+     */
+    neopxl_color_palette_set(constrain((int)INA169_Aamps, 0, NEOPXL_PAL_MAX), NEOPXL_BRT);
+  #endif
+  
     /*
      * how much time used in theloop
      */
@@ -888,7 +965,7 @@ void loop() {
 
 
     Serial.println("Tick Occured");
-  
+#ifdef WIFI_ON  
     /*
      * Status the WIFI and set the LED indicator accordingly.
      * Reset the device on repeated, continuous WiFi failures
@@ -915,6 +992,7 @@ void loop() {
   
     // Service the NTP client. Updates happen much slower per defaults.
     timeClient.update();
+#endif
 
     /*
      * read the physical sensors, if they exist
@@ -930,6 +1008,7 @@ void loop() {
      * END OF ACQUISITION
      */
 
+#ifdef WIFI_ON
     /*
      * PUBLISH ALL OF THE DATA VIA MQTT
      */
@@ -1125,6 +1204,8 @@ void loop() {
       else
         LMQTTConnect(false);
     }
+#endif
+/* of mqtt publish block */
     
     sampleTimerOccured = false;
   }  /* end of slow loop */
