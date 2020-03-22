@@ -163,12 +163,10 @@
 
 /********************* WiFi Access Point ***********************/
 
-
 // home
 #define WLAN_SSID       "ZEther-2G"
-#define WLAN_PASS       "FAIL"
+//#define WLAN_PASS       "FAIL"
 #define LOCATION        "Basement_Tech"
-// home
 
 
 /*********************  MQTT Server Info  *********************/
