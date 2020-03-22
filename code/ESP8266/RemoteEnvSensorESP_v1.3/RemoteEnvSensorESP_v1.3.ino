@@ -162,15 +162,10 @@
 
 
 /********************* WiFi Access Point ***********************/
-// zimknives shop
-//#define WLAN_SSID       "WIFIDBF86C"
-//#define WLAN_PASS       "WFF7WQY771CH6ZRU"
-//#define LOCATION        "cnc_router"
 
 // home
 #define WLAN_SSID       "ZEther-2G"
-#define WLAN_PASS       "leonardo1519"
-//#define WLAN_PASS       "FAIL"
+#define WLAN_PASS       "FAIL"
 #define LOCATION        "Basement_Tech"
 
 /*********************  MQTT Server Info  *********************/
@@ -198,6 +193,7 @@
 #define TOPIC_ENV_THERM0 "zk-cncrtr/therm0"
 #define TOPIC_ENV_THERM1 "zk-cncrtr/therm1"
 #define TOPIC_ENV_AAMPS  "zk-cncrtr/aamps"
+#define TOPIC_ENV_ESTOP  "zk-cncrtr/estop"
 
 
 /********************* Behavioral Characteristics *************/
@@ -569,6 +565,12 @@ NTPClient timeClient(ntpUDP, TZ_OFFSET);
 // Instantiate the temp/humidity sensor
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 #endif
+
+/*
+ * Other I/O
+ */
+
+uint8_t cncrtr_estop;
 
 /*
  * WIFI
@@ -946,7 +948,12 @@ void loop() {
      */
     neopxl_color_palette_set(constrain((int)INA169_Aamps, 0, NEOPXL_PAL_MAX), NEOPXL_BRT);
   #endif
-  
+
+    /*
+     * read the estop digital input
+     */
+    cncrtr_estop = digitalRead(ESTOP_PIN);
+
     /*
      * how much time used in theloop
      */
@@ -1003,7 +1010,7 @@ void loop() {
     temp = htu.readTemperature() + TEMP_OFFSET;
     humidity = htu.readHumidity() + HUM_OFFSET;
   #endif
-
+    
     /*
      * END OF ACQUISITION
      */
@@ -1184,8 +1191,24 @@ void loop() {
       #endif
         ;
   #endif
-  
-      
+     
+      /*
+       * send the estop pin status
+       */
+      enviro = json_sample("estop", cncrtr_estop, LOCATION, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending cncrtr_estop data ");
+    #endif
+      if (mqtt.publish(TOPIC_ENV_ESTOP, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
     } /* end of mqtt connect check */
     
     /*
