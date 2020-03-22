@@ -163,10 +163,13 @@
 
 /********************* WiFi Access Point ***********************/
 
+
 // home
 #define WLAN_SSID       "ZEther-2G"
 #define WLAN_PASS       "FAIL"
 #define LOCATION        "Basement_Tech"
+// home
+
 
 /*********************  MQTT Server Info  *********************/
 //#define SERVER      "192.168.1.10"
@@ -202,7 +205,7 @@
  * timer intervals for the main sensing loop and publish
  */
 #define MQTT_INTERVAL     3000 // mS between publish's
-#define ACQ_INTERVAL      100  // A/D sampling interval (mS)
+#define ACQ_INTERVAL      200  // A/D sampling interval (mS)
 
 #define RST_ON_WIFI_FAIL  false // If true, reset the device after RST_ON_WIFI_COUNT loops
 #define RST_ON_WIFI_COUNT 30    // Number of times through the main loop sample/publish timer
@@ -389,6 +392,7 @@ const float INA169_shunt_R = 0.001;  /* Current measuring shund resistor */
 const float INA169_load_R  = 68000;  /* Output load resistance */
 const float INA169_Vgain   = INA169_load_R / (float)1000;
 float       INA169_Aamps;  /* running average of current */
+float       INA169_Iamps;  /* instantaneous current value */
 
 /*
  * Convert the input voltage to current in amps for the INA169 Current monitor
@@ -470,7 +474,7 @@ float gas_v_to_ppm(int formula, float bits)  {
 #define NEOPXL_COUNT  30
 /* NEOPXL_PIN defined above in hardware section */
 #define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
-#define NEOPXL_WAIT   50  /* time to wait after .show() */
+#define NEOPXL_WAIT   20  /* time to wait after .show() */
 
 
 #ifdef NEOPIXELS
@@ -885,12 +889,16 @@ void loop() {
 
     /*
      * calculate the running average
+     * 
+     * NOTE: coming out of this the last and second last slot have the
+     * same value in anticipation of the next time around
+     * 
      */
     for (i = 0; i < ADC_CHANNELS; i++)  {
-      adcsum = 0;
+      adcsum = 0;  /* reusing the adcsum accumulator */
       for(j = 0; j < ADC_AVG_SAMPLES; j++)  {
-        adcsum += adc[i][j];       
-        if(j > 0)
+        adcsum += adc[i][j]; /* add all of the saved samples into the accumulator */
+        if(j > 0)  /* if not the first one, move left, getting ready for the next time */
           adc[i][j-1] = adc[i][j];
     #ifdef FL_DEBUG_MSG
       Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("]");
@@ -908,6 +916,13 @@ void loop() {
   #endif
   
   #ifdef THERMISTORS
+    /*
+     * Convert the raw thermistor voltage (adc input) to
+     * physical temperature values.
+     * 
+     * Using the running average since temperature changes slowly
+     * 
+     */
     for(i = 0; i < THERMISTORS; i++)  {
     #ifdef FL_DEBUG_MSG
       Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
@@ -931,10 +946,14 @@ void loop() {
 
   #ifdef INA169
     /*
-     * convert the above read/calculated running average a/d reading
-     * to a current reading in amps
+     * convert the above read/calculated a/d reading to a current reading in amps
+     * 
+     * Calculate using the running average for the mqtt publish, and, 
+     * the instantaneous for the neopixel output
      */
+    INA169_Iamps = INA169_bits_to_amps(adc[INA169_ADCCH][ADC_AVG_SAMPLES-1]);
     INA169_Aamps = INA169_bits_to_amps(adc_ravg[INA169_ADCCH]);
+    
     #ifdef FL_DEBUG_MSG
       Serial.print("INA169_Aamps = "); Serial.println(INA169_Aamps);
     #endif
@@ -946,7 +965,7 @@ void loop() {
      * NOTE: at this writing, I'm taking advantage of the fact that
      * the number of colors is about the same as the range of amps expected.
      */
-    neopxl_color_palette_set(constrain((int)INA169_Aamps, 0, NEOPXL_PAL_MAX), NEOPXL_BRT);
+    neopxl_color_palette_set(constrain((int)INA169_Iamps, 0, NEOPXL_PAL_MAX), NEOPXL_BRT);
   #endif
 
     /*
