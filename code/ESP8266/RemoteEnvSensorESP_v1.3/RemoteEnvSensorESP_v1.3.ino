@@ -174,15 +174,9 @@
 /********************* WiFi Access Point ***********************/
 
 
-// zimknives shop
-//#define WLAN_SSID       "WIFIDBF86C"
-//#define WLAN_PASS       "WFF7WQY771CH6ZRU"
-//#define LOCATION        "cnc_router"
-
 // home
 #define WLAN_SSID       "ZEther-2G"
-#define WLAN_PASS       "leonardo1519"
-//#define WLAN_PASS       "FAIL"
+#define WLAN_PASS       "FAIL"
 #define LOCATION        "Basement_Tech"
 
 
