@@ -1,4 +1,5 @@
 
+
 /*
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of these words as published by the author.
@@ -47,7 +48,7 @@
  * + potentially move the HTU21D read of temp and humidity to the slow loop
  * + include the topics in the thermistor structure ?
  * + blink the WIFI connected LED for heartbeat
- * + add neoPixel status indications
+ * + find a simple json parser (did long after writing the brute force encoding)
  * 
  * Longer term:
  * + add separate calibrations to thermistor structure
@@ -69,6 +70,14 @@
  *   However, now there are some local functions, so continue, but retry the connect.
  * + Added optional device reset on repeated mqtt connect failures
  * + Added conversion of the INA169 adc channel to amps and publish
+ * + Added neopixel display of current as color
+ * + Added mqtt subscribe capability and topic for neopixel mode
+ * + Added a super simple json parser to handle the neopixel mode
+ * + Added several neopixel modes that are selected via the mqtt topic
+ *   NOTE: at this writing there is precious little error handling, etc.
+ *         and this implementation is a bit brute-force.
+ *         use with caution until the error handling version is posted
+ *
  * 
  * v1.2:
  * + created the data structure for the running average and implemented it
@@ -135,6 +144,7 @@
 #include <Adafruit_NeoPixel.h>
 
 
+
 /********************* Hardware Connections ********************/
 // Note : currently no conflicts between the env sensor and the CNC version
 //
@@ -163,10 +173,18 @@
 
 /********************* WiFi Access Point ***********************/
 
+
+// zimknives shop
+//#define WLAN_SSID       "WIFIDBF86C"
+//#define WLAN_PASS       "WFF7WQY771CH6ZRU"
+//#define LOCATION        "cnc_router"
+
 // home
 #define WLAN_SSID       "ZEther-2G"
+#define WLAN_PASS       "leonardo1519"
 //#define WLAN_PASS       "FAIL"
 #define LOCATION        "Basement_Tech"
+
 
 
 /*********************  MQTT Server Info  *********************/
@@ -188,14 +206,22 @@
 
 // This section is used for the CNC Router sensing module
 #define TOPIC_TEST       "PamTest-esp8266"
-#define TOPIC_ENV_TEMP   "zk-cncrtr/temp"
-#define TOPIC_ENV_HUM    "zk-cncrtr/humidity"
-#define TOPIC_STIME      "zk-cncrtr/time"
-#define TOPIC_ENV_THERM0 "zk-cncrtr/therm0"
-#define TOPIC_ENV_THERM1 "zk-cncrtr/therm1"
-#define TOPIC_ENV_AAMPS  "zk-cncrtr/aamps"
-#define TOPIC_ENV_ESTOP  "zk-cncrtr/estop"
+#define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
+#define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
+#define TOPIC_STIME       "zk-cncrtr/time"
+#define TOPIC_ENV_THERM0  "zk-cncrtr/therm0"
+#define TOPIC_ENV_THERM1  "zk-cncrtr/therm1"
+#define TOPIC_ENV_AAMPS   "zk-cncrtr/aamps"
+#define TOPIC_ENV_ESTOP   "zk-cncrtr/estop"
+#define TOPIC_NEOPXL_MODE "zk-cncrtr/neopxl_mode"
 
+/*
+ * list of topics to which to subscribe
+ */
+const char *mqtt_subs[] = {
+  TOPIC_NEOPXL_MODE
+};
+#define MQTT_SUBS_COUNT sizeof(mqtt_subs) / sizeof(char*)
 
 /********************* Behavioral Characteristics *************/
 
@@ -203,7 +229,7 @@
  * timer intervals for the main sensing loop and publish
  */
 #define MQTT_INTERVAL     3000 // mS between publish's
-#define ACQ_INTERVAL      200  // A/D sampling interval (mS)
+#define ACQ_INTERVAL      100  // A/D sampling interval (mS)
 
 #define RST_ON_WIFI_FAIL  false // If true, reset the device after RST_ON_WIFI_COUNT loops
 #define RST_ON_WIFI_COUNT 30    // Number of times through the main loop sample/publish timer
@@ -469,15 +495,34 @@ float gas_v_to_ppm(int formula, float bits)  {
  *  NEOPIXELS
  *  ---------
  */
-#define NEOPXL_COUNT  30
+#define NEOPXL_COUNT  30  /* total number of neopixels in the string */
 /* NEOPXL_PIN defined above in hardware section */
 #define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
 #define NEOPXL_WAIT   20  /* time to wait after .show() */
 
+/*
+ * Define the parameters that describe neopixel playout modes
+ */
+#define NEOPXL_MODE_OFF    0  /* Neopixels are off */
+
+#define NEOPXL_MODE_COLOR  1  /* play the current out on range below with color palette */
+#define NEOPXL_COLOR_START 0  /* starting pixel for COLOR mode */
+#define NEOPXL_COLOR_END  15  /* ending pixel for COLOR mode */
+
+#define NEOPXL_MODE_VU     2  /* play the current out on subset of pixels as vu meter */
+#define NEOPXL_VU_START   16  /* starting pixel for VU mode */
+#define NEOPXL_VU_END     29  /* ending pixel for VU mode */
 
 #ifdef NEOPIXELS
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
 #endif
+
+/*
+ * saves the neopixel mode that is sent via mqtt
+ * set this value equal to the default value
+ */
+int neopxl_mode = NEOPXL_MODE_COLOR;
+String neopxl_mode_as_String;
 
 /*
  * define a spectrum of colors from green to red for use with neopixels
@@ -510,7 +555,7 @@ const uint8_t rgb_palette[13][3] = {
  * expects global variable strip for neopixel class instance
  * 
  */
-void neopxl_color_palette_set(int color_index, float brightness)  {
+void neopxl_color_palette_set(int color_index, float brightness, int neopxl_start, int neopxl_end)  {
   int8_t i = NEOPXL_COUNT;
   uint8_t r, g, b;
 
@@ -521,7 +566,7 @@ void neopxl_color_palette_set(int color_index, float brightness)  {
   g = rgb_palette[color_index][1] * brightness;
   b = rgb_palette[color_index][2] * brightness;
     
-  for(i = 0; i < NEOPXL_COUNT; i++)  {
+  for(i = neopxl_start; i <= neopxl_end; i++)  {
     strip.setPixelColor(i, r, g, b); 
   }
   #ifdef FL_DEBUG_MSG
@@ -633,10 +678,74 @@ wl_status_t  LWifiConnect(bool first)  {
  * ----
  */
 
+#ifdef WIFI_ON
+/*
+ * function declarations
+ */
+void callback(char* topic, byte* payload, unsigned int length);
+String macToStr(const uint8_t* mac);
+bool MQTT_Subscribe();
+bool LMQTTConnect(bool first);
+String json_sample(String parm, float value, String location, String tstamp);
+int simple_json_parser(char buffer[]);
+
+/*
+ * Some parameters for simple json parsing ... VERY LIMITED
+ */
+#define JSON_DEPTH_LMT 5    /* how many layers can the json string have */
+#define JSON_LVBUF_SIZE 64  /* label and value string buffer size */
+
+struct json_parts {
+  char label[JSON_LVBUF_SIZE];
+  char value[JSON_LVBUF_SIZE];
+  char *pvalue;  /* switch between the label and value buffers */
+};
+
+char mqtt_incoming[JSON_LVBUF_SIZE];
+
+/*
+ * as it says, a place to put the components of a deconstructed json string
+ */
+struct json_parts json_parts[JSON_DEPTH_LMT];
+int    json_level = 0;
+
+/*
+ * mqtt incoming (subscribed) message handling
+ * NOTE: all incoming messages are decoded as json strings
+ * NOTE: currently all incoming messages are expected to be neopxl_mode
+ */
 void callback(char* topic, byte* payload, unsigned int length) {
+  int i = 0;
+
   Serial.println("Message back from broker");
   Serial.println(topic);
+
+  for (i=0;i<length;i++) {
+    mqtt_incoming[i] = payload[i];
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+  mqtt_incoming[i] = '\0';
+  Serial.println(mqtt_incoming);
+
+  /*
+   * parse the json string and remember the deepest level
+   */
+  json_level = simple_json_parser(mqtt_incoming);
+  
+  for (i = 0; i < JSON_DEPTH_LMT; i++)  {
+    Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
+    Serial.print(json_parts[i].label);Serial.print("<-");
+    Serial.print(" value = ->");Serial.print(json_parts[i].value);Serial.println("<-");
+  }
+
+
+  neopxl_mode_as_String = String(json_parts[json_level].value);
+  Serial.println(neopxl_mode_as_String);
+  neopxl_mode = neopxl_mode_as_String.toInt();
+  Serial.print("Setting neopxl_mode to:");Serial.println(neopxl_mode);
 }
+
 
 // Convert a mac address to a string
 String macToStr(const uint8_t* mac)
@@ -650,9 +759,29 @@ String macToStr(const uint8_t* mac)
   return result;
 }
 
-#ifdef WIFI_ON
+
 // Setup the MQTT client class by passing in the WiFi client and MQTT server
 PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
+
+
+/*
+ * Subscribe to all topics in the mqtt_subs[] list
+ * 
+ * Try to subscribe to all and return false if any fail
+ */
+bool MQTT_Subscribe()  {
+  bool status = true;
+  for(int i = 0; i < MQTT_SUBS_COUNT; i++)  {
+    if(mqtt.subscribe(mqtt_subs[i]) == false)  {
+      status = false;
+      Serial.print("MQTT subscribe failed for: "); Serial.println(mqtt_subs[i]);
+    }
+    else  {
+      Serial.print("MQTT subscribe succeeded for: "); Serial.println(mqtt_subs[i]);
+    }
+  }
+  return(status);
+}
 
 
 /*
@@ -701,13 +830,6 @@ bool LMQTTConnect(bool first)  {
 }
 #endif
 
-void delay_yield(int msecs)  {
-  int i = 0;
-  for (i = 0; i < msecs/10; i++)  {
-    delay(10);
-    yield();
-  }
-}
 
 /*
  * Form up a json payload.  Overload for three parm types.
@@ -753,6 +875,103 @@ String json_sample(String parm, int value, String location, String tstamp)  {
   return(enviro);  
 }
 
+
+
+
+/*
+ * this is a super-simple json parser.
+ * it expects a global structure of the type json_parts to be declared.
+ * it cannot handle ","'s so only one value is supported.
+ */
+int simple_json_parser(char buffer[])
+{
+
+  char *pbuffer = buffer;
+  int depth = -1; /* how far deep into the string and buffer */
+  int max_depth = 0;
+  int i = 0, j = 0, k = 0;
+
+  for(i = 0; i < JSON_DEPTH_LMT; i++)  {
+    json_parts[i].pvalue = json_parts[i].label;
+    json_parts[i].label[0] = '\0';
+    json_parts[i].value[0] = '\0';
+  }
+
+
+  while(*pbuffer != '\0')  {
+
+    switch(*pbuffer)  {
+      case ' ':
+        break;
+      case '{':
+        depth++; /* starting a new label for a new pair */
+        if(depth > max_depth)
+          max_depth = depth;
+        json_parts[depth].pvalue = json_parts[depth].label;  /* technically not necessary */
+
+        /*
+         * fill the character into the value string for all to the start
+         * don't put it in the current value string
+         */
+        k = depth - 1;
+        while(k >= 0)  {
+          *(json_parts[k].pvalue++) = *pbuffer;
+          k--;
+        }
+
+        break;
+
+      case '}':  /* always terminating a value */
+        json_parts[depth].pvalue = '\0';
+
+        /*
+         * fill the character into the value string for all to the start
+         * don't put it in the current value string
+         */
+        k = depth - 1;
+        while(k >= 0)  {
+          *(json_parts[k].pvalue++) = *pbuffer;
+          k--;
+        }
+
+        depth--;
+
+        break;
+
+      case ':':  /* colon will always terminate label */
+        json_parts[depth].pvalue = '\0';  /* terminate the label */
+ 
+        /*
+         * fill the character into the value string for all to the start
+         * don't put it in the current value string
+         */
+        k = depth - 1;
+        while(k >= 0)  {
+          *(json_parts[k].pvalue++) = *pbuffer;
+          k--;
+        }
+
+        json_parts[depth].pvalue = json_parts[depth].value;
+        break;
+
+      default:
+        /*
+         * fill in all of the active .value buffers
+         */
+        for(int k = depth; k >= 0; k--)  {
+          *(json_parts[k].pvalue++) = *pbuffer;
+        }
+        break;
+    };
+
+    pbuffer++;
+  }
+  return(max_depth);                                                                                                                                                                                                                                                            
+}
+
+
+
+
 // variables for the raw sensor readings
 float    temp;
 float    humidity;
@@ -797,6 +1016,10 @@ void setup() {
   
   // Setup the MQTT connection and attempt an initial publish
   LMQTTConnect(true);
+
+  // subscribe to the topics specified above
+  if (mqtt.connected())
+    MQTT_Subscribe();
 #endif
 
 #ifdef HTU21DF_P
@@ -827,9 +1050,9 @@ void setup() {
   strip.show(); // Initialize all pixels to 'off'
   delay(500);
   //strip.setBrightness(127); // out of 255
-  neopxl_color_palette_set(1, NEOPXL_BRT);  /* green */
+  neopxl_color_palette_set(1, NEOPXL_BRT, 0, (NEOPXL_COUNT-1));  /* green */
   delay(500);
-  neopxl_color_palette_set(0, NEOPXL_BRT);  /* off */
+  neopxl_color_palette_set(0, NEOPXL_BRT, 0, (NEOPXL_COUNT-1));  /* off */
 #endif
 
   currentMillis = previousMillis = millis();
@@ -958,12 +1181,34 @@ void loop() {
   #endif
 
   #ifdef NEOPIXELS
-    /*
-     * write the current reading to a color on the neopixel strip
-     * NOTE: at this writing, I'm taking advantage of the fact that
-     * the number of colors is about the same as the range of amps expected.
-     */
-    neopxl_color_palette_set(constrain((int)INA169_Iamps, 0, NEOPXL_PAL_MAX), NEOPXL_BRT);
+
+    switch(neopxl_mode)  {
+
+    case NEOPXL_MODE_OFF:
+      /*
+       * write the current reading to a color on the neopixel strip
+       * NOTE: at this writing, I'm taking advantage of the fact that
+       * the number of colors is about the same as the range of amps expected.
+       */
+      neopxl_color_palette_set(0, 0, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
+      break;
+      
+    case NEOPXL_MODE_COLOR:
+    
+      /*
+       * write the current reading to a color on the neopixel strip
+       * NOTE: at this writing, I'm taking advantage of the fact that
+       * the number of colors is about the same as the range of amps expected.
+       */
+      neopxl_color_palette_set(constrain((int)INA169_Iamps, 0, NEOPXL_PAL_MAX), 
+                               NEOPXL_BRT,
+                               NEOPXL_COLOR_START, NEOPXL_COLOR_END);
+      break;
+
+    default:
+      break;
+    }
+
   #endif
 
     /*
@@ -983,7 +1228,7 @@ void loop() {
   }  /* end of fast acquisition loop */
 
   /*
-   * check for the publish/slower tick timer
+   * check for the publish/SLOWER TICK TIMER
    */
   if(sampleTimerOccured == true)  {
 
@@ -1246,6 +1491,8 @@ void loop() {
     }
 #endif
 /* of mqtt publish block */
+
+  mqtt.loop();
     
     sampleTimerOccured = false;
   }  /* end of slow loop */
