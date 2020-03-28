@@ -48,7 +48,7 @@
  * + potentially move the HTU21D read of temp and humidity to the slow loop
  * + include the topics in the thermistor structure ?
  * + blink the WIFI connected LED for heartbeat
- * + find a simple json parser (did long after writing the brute force encoding)
+ * + NEED TO INITIALIZE THE neopxl_mode on subscribe or something
  * 
  * Longer term:
  * + add separate calibrations to thermistor structure
@@ -77,6 +77,8 @@
  *   NOTE: at this writing there is precious little error handling, etc.
  *         and this implementation is a bit brute-force.
  *         use with caution until the error handling version is posted
+ * + Added some better error checking for json, etc.
+ * + Added ability to handle incoming messages from multiple topics
  *
  * 
  * v1.2:
@@ -148,15 +150,15 @@
 /********************* Hardware Connections ********************/
 // Note : currently no conflicts between the env sensor and the CNC version
 //
-//#define UNUSED    0  // built in LED on Huzzah
-//#define UNUSED    2
-//#define I2C_SDA   4  // defined elsewhere
-//#define I2C_SCL   5  // defined elsewhere
-#define WIFI_LED    12 // output pin to indicate WIFI connect status
-#define ESTOP_PIN   13 // input to provide the status of the router estop
-#define INPUT_14    14 // hardwired as an optically isolated input
-#define NEOPXL_PIN  15 // output pin for neopixel data
-//#define UNUSED    16
+//#define UNUSED       0  // built in LED on Huzzah
+#define   ACQ_ACTIVE   2  // sampling loop for scope monitoring
+//#define I2C_SDA      4  // defined elsewhere
+//#define I2C_SCL      5  // defined elsewhere
+#define   WIFI_LED    12  // output pin to indicate WIFI connect status
+#define   ESTOP_PIN   13  // input to provide the status of the router estop
+#define   INPUT_14    14  // hardwired as an optically isolated input
+#define   NEOPXL_PIN  15  // output pin for neopixel data
+//#define UNUSED      16
 
 /* 
  *  which hardware is actually connected?
@@ -173,7 +175,6 @@
 
 /********************* WiFi Access Point ***********************/
 
-
 // home
 #define WLAN_SSID       "ZEther-2G"
 #define WLAN_PASS       "FAIL"
@@ -189,6 +190,7 @@
 
 /********************* MQTT Payload Information ***************/
 
+//Publish:
 // This section is used for the free air sensing module
 //#define TOPIC_TEST       "PamTest-esp8266"
 //#define TOPIC_ENV_TEMP   "zk-env/temp"
@@ -207,16 +209,83 @@
 #define TOPIC_ENV_THERM1  "zk-cncrtr/therm1"
 #define TOPIC_ENV_AAMPS   "zk-cncrtr/aamps"
 #define TOPIC_ENV_ESTOP   "zk-cncrtr/estop"
-#define TOPIC_NEOPXL_MODE "zk-cncrtr/neopxl_mode"
+
+//Subscribe:
+#define TOPIC_NEOPXL_MODE  "zk-cncrtr/neopxl_mode"
+#define TOPIC_NEOPXL_RANGE "zk-cncrtr/neopxl_range"
 
 /*
  * list of topics to which to subscribe
  */
-const char *mqtt_subs[] = {
-  TOPIC_NEOPXL_MODE
-};
-#define MQTT_SUBS_COUNT sizeof(mqtt_subs) / sizeof(char*)
+#define PARM_UND   -1  /* undefined */
+#define PARM_INT    0
+#define PARM_FLOAT  1
+#define PARM_BOOL   2
+#define PARM_STRING 3
 
+struct parameter {
+  char topic[64];  /* used as the key into this list */
+  char value[64];  /* value as string */
+  int  parm_type;   /* convert from string according to this */
+};
+
+struct parameter parameters[] = {
+  {TOPIC_NEOPXL_MODE,  "", PARM_INT},
+  {TOPIC_NEOPXL_RANGE, "", PARM_INT},
+  {"","",PARM_UND}  /* terminate the list */
+};
+
+/*
+ * convert the string based value from the json string
+ * to the appropriate type.
+ * Note: collection of three functions based on parameter type
+ * returns -1: if the topic is not found
+ */
+int parm_to_value(char *topic, int *num_value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      *num_value = atoi(parameters[i].value);
+      status = 1;
+    }
+  }
+  return(status);
+}
+int parm_to_value(char *topic, float *num_value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      *num_value = atof(parameters[i].value);
+      status = 1;
+    }
+  }
+  return(status);
+}
+int parm_to_value(char *topic, char *num_value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      strcpy(num_value, parameters[i].value);
+      status = 1;
+    }
+  }
+  return(status);
+}
+
+/*
+ * based on the topic, set the string based value in the parameter[]
+ * returns -1: if the topic is not found
+ */
+int set_parm_stvalue(char *topic, char *value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      strcpy(parameters[i].value, value);
+      status = 1;
+    }
+  }
+  return(status);
+}
 /********************* Behavioral Characteristics *************/
 
 /*
@@ -256,7 +325,7 @@ void sampleTimerCallback(void *pArg)  {
 /*
  * faster loop
  */
-os_timer_t acqTimer; /* for the slower sample loop */
+os_timer_t acqTimer;
 bool acqTimerOccured;
 void acqTimerCallback(void *pArg)  {
   acqTimerOccured = true;
@@ -502,10 +571,14 @@ float gas_v_to_ppm(int formula, float bits)  {
 #define NEOPXL_MODE_COLOR  1  /* play the current out on range below with color palette */
 #define NEOPXL_COLOR_START 0  /* starting pixel for COLOR mode */
 #define NEOPXL_COLOR_END  15  /* ending pixel for COLOR mode */
+#define NEOPXL_COLOR_MIN   0  /* map this to the bottom of the color palette */
+#define NEOPXL_COLOR_MAX  20  /* map this to the top of the color palette */
 
 #define NEOPXL_MODE_VU     2  /* play the current out on subset of pixels as vu meter */
 #define NEOPXL_VU_START   16  /* starting pixel for VU mode */
 #define NEOPXL_VU_END     29  /* ending pixel for VU mode */
+#define NEOPXL_VU_BASE (float)0.1  /* baseline brighness for the VU scale */
+
 
 #ifdef NEOPIXELS
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
@@ -513,9 +586,10 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + 
 
 /*
  * saves the neopixel mode that is sent via mqtt
- * set this value equal to the default value
+ * set the value equal to the default value
  */
-int neopxl_mode = NEOPXL_MODE_COLOR;
+int neopxl_mode = NEOPXL_MODE_OFF;  /* active neopixel mode */
+int nneopxl_mode = NEOPXL_MODE_COLOR;  /* "new" neopxl_mode received */
 String neopxl_mode_as_String;
 
 /*
@@ -547,6 +621,10 @@ const uint8_t rgb_palette[13][3] = {
  * color_index indexes into the the rgb_palette[][] table.
  * 
  * expects global variable strip for neopixel class instance
+ * int color_index   : index in the color palette[][] array to write
+ * float brightness  : value from 0 to 1.0; multiplied by the palette[][] values
+ * int neopxl_start  : first neopixel to which to write
+ * int neopxl_end    : last neopixel to which to write
  * 
  */
 void neopxl_color_palette_set(int color_index, float brightness, int neopxl_start, int neopxl_end)  {
@@ -693,6 +771,7 @@ struct json_parts {
   char label[JSON_LVBUF_SIZE];
   char value[JSON_LVBUF_SIZE];
   char *pvalue;  /* switch between the label and value buffers */
+  bool closed; /* has this level been closed i.e. {}, used for error checking */
 };
 
 char mqtt_incoming[JSON_LVBUF_SIZE];
@@ -711,33 +790,39 @@ int    json_level = 0;
 void callback(char* topic, byte* payload, unsigned int length) {
   int i = 0;
 
-  Serial.println("Message back from broker");
-  Serial.println(topic);
+  Serial.print("Message back from broker, topic:"); Serial.println(topic);
 
   for (i=0;i<length;i++) {
     mqtt_incoming[i] = payload[i];
-    Serial.print((char)payload[i]);
   }
-  Serial.println();
   mqtt_incoming[i] = '\0';
-  Serial.println(mqtt_incoming);
+  Serial.print("Payload ->");Serial.print(mqtt_incoming);Serial.println("<-");
+
 
   /*
    * parse the json string and remember the deepest level
    */
   json_level = simple_json_parser(mqtt_incoming);
-  
+
+#ifdef FL_DEBUG_MSG
+  /*
+   * burp out the json parts structure
+   */
   for (i = 0; i < JSON_DEPTH_LMT; i++)  {
     Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
     Serial.print(json_parts[i].label);Serial.print("<-");
     Serial.print(" value = ->");Serial.print(json_parts[i].value);Serial.println("<-");
   }
-
-
-  neopxl_mode_as_String = String(json_parts[json_level].value);
-  Serial.println(neopxl_mode_as_String);
-  neopxl_mode = neopxl_mode_as_String.toInt();
-  Serial.print("Setting neopxl_mode to:");Serial.println(neopxl_mode);
+#endif
+  /* successful parsing, set the value in the parameters array */
+  if(json_level >= 0) {
+    if(set_parm_stvalue(topic, json_parts[json_level].value) < 0) {
+      Serial.print("callback():error setting value in parameters[], topic: ->");
+      Serial.print(topic);Serial.println("<-");
+    }
+  }
+  else
+      Serial.println("callback(): error in json string parsing");
 }
 
 
@@ -765,14 +850,17 @@ PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
  */
 bool MQTT_Subscribe()  {
   bool status = true;
-  for(int i = 0; i < MQTT_SUBS_COUNT; i++)  {
-    if(mqtt.subscribe(mqtt_subs[i]) == false)  {
+
+  i = 0;
+  while(parameters[i].parm_type != PARM_UND)  {
+    if(mqtt.subscribe(parameters[i].topic) == false)  {
       status = false;
-      Serial.print("MQTT subscribe failed for: "); Serial.println(mqtt_subs[i]);
+      Serial.print("MQTT subscribe failed for: "); Serial.println(parameters[i].topic);
     }
     else  {
-      Serial.print("MQTT subscribe succeeded for: "); Serial.println(mqtt_subs[i]);
+      Serial.print("MQTT subscribe succeeded for: "); Serial.println(parameters[i].topic);
     }
+    i++;
   }
   return(status);
 }
@@ -876,6 +964,12 @@ String json_sample(String parm, int value, String location, String tstamp)  {
  * this is a super-simple json parser.
  * it expects a global structure of the type json_parts to be declared.
  * it cannot handle ","'s so only one value is supported.
+ * 
+ * char buffer [] : the json string to parse
+ * returns:  max_depth: the lowest level index (not count) into json_parts[]
+ *          -1:         if an error occured
+ * 
+ * checks to make sure all levels are closed and returns error if not
  */
 int simple_json_parser(char buffer[])
 {
@@ -884,11 +978,16 @@ int simple_json_parser(char buffer[])
   int depth = -1; /* how far deep into the string and buffer */
   int max_depth = 0;
   int i = 0, j = 0, k = 0;
-
+  
+  /*
+   * initialize the array of structures tha will hold
+   * the resultant pieces of the json string
+   */
   for(i = 0; i < JSON_DEPTH_LMT; i++)  {
     json_parts[i].pvalue = json_parts[i].label;
     json_parts[i].label[0] = '\0';
     json_parts[i].value[0] = '\0';
+    json_parts[i].closed = true;
   }
 
 
@@ -899,9 +998,10 @@ int simple_json_parser(char buffer[])
         break;
       case '{':
         depth++; /* starting a new label for a new pair */
-        if(depth > max_depth)
+        if(depth > max_depth)  /* for the return value */
           max_depth = depth;
         json_parts[depth].pvalue = json_parts[depth].label;  /* technically not necessary */
+        json_parts[depth].closed = false;  /* this level is open */
 
         /*
          * fill the character into the value string for all to the start
@@ -917,6 +1017,7 @@ int simple_json_parser(char buffer[])
 
       case '}':  /* always terminating a value */
         json_parts[depth].pvalue = '\0';
+        json_parts[depth].closed = true;
 
         /*
          * fill the character into the value string for all to the start
@@ -960,6 +1061,10 @@ int simple_json_parser(char buffer[])
 
     pbuffer++;
   }
+  for(i = 0; i < JSON_DEPTH_LMT; i++)  {
+    if(json_parts[i].closed == false)
+      return(-1);
+  }
   return(max_depth);                                                                                                                                                                                                                                                            
 }
 
@@ -990,6 +1095,9 @@ void setup() {
   pinMode(ESTOP_PIN, INPUT);
   pinMode(INPUT_14, INPUT);
   // fourth is undefined/unused at this writing
+
+  pinMode(ACQ_ACTIVE, OUTPUT);  // for monitoring acq timing via scope
+  digitalWrite(ACQ_ACTIVE,false);
   
 #ifdef WIFI_ON
   /* 
@@ -1089,7 +1197,12 @@ void loop() {
     /*
      * read through the adc  channels, averaging the number of
      * acquitisions per sample  (noise filtering)
+     * 
+     * set the output ACQ_ACTIVE high at start, low at end of acq cycle
      */
+
+    digitalWrite(ACQ_ACTIVE,true);
+    
     for (i = 0; i < ADC_CHANNELS; i++)  {   /* loop through the adc channels */
       adcsum = 0;
       for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
@@ -1101,6 +1214,8 @@ void loop() {
       Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i][ADC_AVG_SAMPLES-1]);
     #endif
     }
+
+    digitalWrite(ACQ_ACTIVE,false);
 
     /*
      * calculate the running average
@@ -1175,7 +1290,12 @@ void loop() {
   #endif
 
   #ifdef NEOPIXELS
-
+    parm_to_value(TOPIC_NEOPXL_MODE, &nneopxl_mode);
+    if(nneopxl_mode != neopxl_mode)  {
+      neopxl_mode = nneopxl_mode;
+      Serial.print("Setting new neopxl_mode to:");Serial.println(neopxl_mode);
+    }
+    
     switch(neopxl_mode)  {
 
     case NEOPXL_MODE_OFF:
@@ -1191,12 +1311,13 @@ void loop() {
     
       /*
        * write the current reading to a color on the neopixel strip
-       * NOTE: at this writing, I'm taking advantage of the fact that
-       * the number of colors is about the same as the range of amps expected.
+       * remember: map() can map beyond its limits, hence, constrain()
        */
-      neopxl_color_palette_set(constrain((int)INA169_Iamps, 0, NEOPXL_PAL_MAX), 
-                               NEOPXL_BRT,
-                               NEOPXL_COLOR_START, NEOPXL_COLOR_END);
+      i = constrain(
+        map(INA169_Iamps, 0, 20, NEOPXL_COLOR_MIN, NEOPXL_COLOR_MAX),
+        0, NEOPXL_PAL_MAX);
+
+      neopxl_color_palette_set(i, NEOPXL_BRT, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
       break;
 
     default:
