@@ -79,6 +79,8 @@
  *         use with caution until the error handling version is posted
  * + Added some better error checking for json, etc.
  * + Added ability to handle incoming messages from multiple topics
+ * + Added handling of the neopxl_range parameter: 
+ *   like a gain on the mapping from current to neopixel color
  *
  * 
  * v1.2:
@@ -175,6 +177,9 @@
 
 /********************* WiFi Access Point ***********************/
 
+
+
+
 // home
 #define WLAN_SSID       "ZEther-2G"
 #define WLAN_PASS       "FAIL"
@@ -226,13 +231,14 @@
 struct parameter {
   char topic[64];  /* used as the key into this list */
   char value[64];  /* value as string */
-  int  parm_type;   /* convert from string according to this */
+  int  parm_type;  /* convert from string according to this */
+  bool valid;      /* set to true once a value has been received */
 };
 
 struct parameter parameters[] = {
-  {TOPIC_NEOPXL_MODE,  "", PARM_INT},
-  {TOPIC_NEOPXL_RANGE, "", PARM_INT},
-  {"","",PARM_UND}  /* terminate the list */
+  {TOPIC_NEOPXL_MODE,  "", PARM_INT, false},
+  {TOPIC_NEOPXL_RANGE, "", PARM_INT, false},
+  {"","",PARM_UND, false}  /* terminate the list */
 };
 
 /*
@@ -286,6 +292,37 @@ int set_parm_stvalue(char *topic, char *value)  {
   }
   return(status);
 }
+
+/*
+ * based on the topic, set the data valid flag
+ * returns -1: if the topic is not found
+ */
+int set_parm_valid(char *topic, bool valid)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      parameters[i].valid = true;
+      status = 1;
+    }
+  }
+  return(status);
+}
+
+/*
+ * based on the topic, set the data valid flag
+ * returns -1: if the topic is not found
+ */
+int get_parm_valid(char *topic, bool *valid)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      *valid = parameters[i].valid;
+      status = 1;
+    }
+  }
+  return(status);
+}
+
 /********************* Behavioral Characteristics *************/
 
 /*
@@ -590,7 +627,9 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + 
  */
 int neopxl_mode = NEOPXL_MODE_OFF;  /* active neopixel mode */
 int nneopxl_mode = NEOPXL_MODE_COLOR;  /* "new" neopxl_mode received */
-String neopxl_mode_as_String;
+bool neopxl_mode_valid; /* has the neopxl_mode been set by incoming mqtt message */
+int neopxl_color_max = NEOPXL_COLOR_MAX;  /* map the top of neopixel color range to this */
+
 
 /*
  * define a spectrum of colors from green to red for use with neopixels
@@ -820,7 +859,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
       Serial.print("callback():error setting value in parameters[], topic: ->");
       Serial.print(topic);Serial.println("<-");
     }
+    /*
+     * put this here instead of inside set_parm_stvalue() so that
+     * it takes an mqtt message to cause the valid flag to be set
+     */
+    else
+      set_parm_valid(topic, true);
   }
+  /* error parsing */
   else
       Serial.println("callback(): error in json string parsing");
 }
@@ -1290,12 +1336,12 @@ void loop() {
   #endif
 
   #ifdef NEOPIXELS
-    parm_to_value(TOPIC_NEOPXL_MODE, &nneopxl_mode);
-    if(nneopxl_mode != neopxl_mode)  {
-      neopxl_mode = nneopxl_mode;
-      Serial.print("Setting new neopxl_mode to:");Serial.println(neopxl_mode);
-    }
-    
+ 
+    /*
+     * based on the neopixel_mode (defined above),
+     * adjust the neopixels color/level appropriately.
+     * neopxl_mode is set in the slower loop
+     */
     switch(neopxl_mode)  {
 
     case NEOPXL_MODE_OFF:
@@ -1314,7 +1360,7 @@ void loop() {
        * remember: map() can map beyond its limits, hence, constrain()
        */
       i = constrain(
-        map(INA169_Iamps, 0, 20, NEOPXL_COLOR_MIN, NEOPXL_COLOR_MAX),
+        map(INA169_Iamps, 0, neopxl_color_max, 1, NEOPXL_PAL_MAX),
         0, NEOPXL_PAL_MAX);
 
       neopxl_color_palette_set(i, NEOPXL_BRT, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
@@ -1349,6 +1395,34 @@ void loop() {
 
 
     Serial.println("Tick Occured");
+
+#ifdef NEOPIXELS
+   /*
+    * first, see if a value for the neopixel mode has been
+    * received from mqtt.  If so, and it's different, set the
+    * active variagle, neopxl_mode, to that value.
+    * 
+    * If not, continue to use the default value.
+    */
+   get_parm_valid(TOPIC_NEOPXL_MODE, &neopxl_mode_valid);
+    if(neopxl_mode_valid == true) {
+      parm_to_value(TOPIC_NEOPXL_MODE, &nneopxl_mode);
+      if(nneopxl_mode != neopxl_mode)  {
+        neopxl_mode = nneopxl_mode;
+        Serial.print("Setting new neopxl_mode to:");Serial.println(neopxl_mode);
+      }
+    }
+    
+    /*
+     * see if a new value for the top of the current/color range
+     * has been received from mqtt.  If so, set it.
+     */
+    get_parm_valid(TOPIC_NEOPXL_RANGE, &neopxl_mode_valid);
+    if(neopxl_mode_valid == true)
+      parm_to_value(TOPIC_NEOPXL_RANGE, &neopxl_color_max);
+
+#endif
+
 #ifdef WIFI_ON  
     /*
      * Status the WIFI and set the LED indicator accordingly.
