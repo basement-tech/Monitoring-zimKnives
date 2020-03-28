@@ -16,9 +16,31 @@
  * 
  * RemoteEnvSensorESP
  * Daniel J. Zimmerman
- * 12/06/17 - 3/15/20
+ * 12/06/17 - 3/30/2020
  * 
- * Firmware to acquire environmental parameters and send via mqtt to broker
+ ****************************************************************************
+ * Firmware to acquire environmental parameters and send via mqtt to broker *
+ ****************************************************************************
+ * Introduction:
+ * 
+ * This software/firmware was/is being developed under the Arduino IDE and is being hosted on the
+ * Adafruit Huzzah ESP8266.  It should run on other host hardware; it does, however, expect the
+ * ESP8266 WiFi hardware.
+ * 
+ * Using the other Adafruit modules listed below, it acquires environmental parameters and primarily
+ * sends them via json/mqtt/WiFi to a mosquito data broker, at this writing hosted on a
+ * Raspberry Pi (although any mosquito data broker will do).  The Raspberry Pi also hosts Node Red,
+ * a public domain, graphical data visualization and control package.
+ * 
+ * Although originally written to monitor
+ * a remote shop that used a propane fired forge (temp, humidity, CO & Propane concentration), it
+ * has since been expanded to monitor a CNC controller, adding additional temperature capability
+ * using thermistors (for heat sinks) and electrical current measurement using a shunt embedded 
+ * in the controller.  Additional data visualization has been added with the capability to drive
+ * a strip of neoPixels (30 at this writing), also from Adafruit.
+ * 
+ * Extensive parameterization is provided allowing a large number of module combinations to be hosted.
+ * ****************************************************************************************************
  * 
  * Hardware:
  * Adafruit Huzzah ESP8266 module (for development; ESP-12S (AF P2491) target)
@@ -38,10 +60,51 @@
  * - Install Adafruit HTU21DF by Adafruit
  * - InstallPubSub Client by Nick O'Leary
  * - Install NTP Client by Fabrice Weinberg
- * - I may have missed one
+ * - Adafruit Neopixel library
  * 
- * I was building under IDE 1.6.7.  Upgraded to 1.8.10 and updated some libraries.  Still works
+ * I was building under IDE 1.6.7.  Upgraded to 1.8.10 and updated some libraries.  Still works.
  * 
+ * ***************************************************************************************************
+ * This file is organized according to this map (the capitalized words are found literally below):
+ * 
+ * Top: This comment section
+ * Support functions and #defines:
+ *   HARDWARE   (pins and what modules are present)
+ *   WIFI       (ssid/password)
+ *   MQTT       (topics and mosquito location)
+ *   BEHAVIORAL (timing, retrys, etc )
+ *   ADS1015    (adc setup, etc.)
+ *   THERMISTOR (formulas, etc.)
+ *   INA169     (high side current monitor formulas, etc.)
+ *   MiCS5524   (gas sensor formulas, etc.)
+ *   NEOPIXELS  (neopixel characteristics, display modes, etc.)
+ *   NIST       (network time functions)
+ *   HTU21D     (temp and humidity sensor formulas, etc.)
+ *   MQTT       (mosquito dialog and json processing)
+ * 
+ * SETUP:
+ *   setup all of the hardware
+ *   
+ * LOOP:
+ *   Fast acquisition loop
+ *     ATD (or A/D if you prefer) acquitision
+ *     calculate running average of atd readings
+ *     thermistor conversion to degrees (adc channels)
+ *     INA169: convert to amps
+ *     Neopixels: adjust based on display mode
+ *     read the estop input bit
+ *     execute mqtt.loop() to check for incoming mqtt
+ *     
+ *   Slow acquisition loop
+ *     adjust the neopixel display mode and gain from mqtt values
+ *     Status the WIFI and mqtt, retry connect if necessary
+ *     read the temp/humidity from the HTU21D (slower changing parameters)
+ *     publish all of the environmental data via mqtt
+ *     
+ *******************************************************************************************************
+ * 
+ * *****************************************************************************************************
+ * Change history:
  * Pending:
  *
  * Now:
@@ -134,7 +197,7 @@
  * + remove sending the test message from the loop()
  * + convert the message format to json
  * + add the ADC acquisition and sending code - test with pot
- * 
+ ******************************************************************************************************
  */
 
 #include <NTPClient.h>
@@ -149,7 +212,7 @@
 
 
 
-/********************* Hardware Connections ********************/
+/********************* HARDWARE Connections ********************/
 // Note : currently no conflicts between the env sensor and the CNC version
 //
 //#define UNUSED       0  // built in LED on Huzzah
@@ -175,7 +238,7 @@
 #define NEOPIXELS       // neopixels are present
 
 
-/********************* WiFi Access Point ***********************/
+/********************* WIFI Access Point ***********************/
 
 
 
@@ -323,7 +386,7 @@ int get_parm_valid(char *topic, bool *valid)  {
   return(status);
 }
 
-/********************* Behavioral Characteristics *************/
+/********************* BEHAVIORAL Characteristics *************/
 
 /*
  * timer intervals for the main sensing loop and publish
