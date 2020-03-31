@@ -144,6 +144,8 @@
  * + Added ability to handle incoming messages from multiple topics
  * + Added handling of the neopxl_range parameter: 
  *   like a gain on the mapping from current to neopixel color
+ * + FIXED A MAJOR BUG IN json parser relating to termination of strings
+ * + made some things more efficient and reduced the fast cycle time to 50mS
  *
  * 
  * v1.2:
@@ -392,7 +394,7 @@ int get_parm_valid(char *topic, bool *valid)  {
  * timer intervals for the main sensing loop and publish
  */
 #define MQTT_INTERVAL     3000 // mS between publish's
-#define ACQ_INTERVAL      100  // A/D sampling interval (mS)
+#define ACQ_INTERVAL      50   // A/D sampling interval (mS)
 
 #define RST_ON_WIFI_FAIL  false // If true, reset the device after RST_ON_WIFI_COUNT loops
 #define RST_ON_WIFI_COUNT 30    // Number of times through the main loop sample/publish timer
@@ -412,6 +414,7 @@ int mqtt_fails = RST_ON_MQTT_COUNT;
  */
 #define L_DEBUG_MSG     // for the loop driven by MQTT_INTERVAL
 //#define FL_DEBUG_MSG  // beware, if ACQ_INTERVAL is small, this will pump out a lot of messages
+//#define FFL_DEBUG_MSG // some really detailed stuff
 
 /*
  * set up the structure and callback() for the slower loop functionality
@@ -458,7 +461,7 @@ unsigned long currentMillis = 0, previousMillis = 0;
 #define ADC_GAIN         GAIN_TWO /* +/- 2.048 V  */
 #define ADC_CHANNELS     4  /* number of channels in the ADC */
 
-#define ADC_SAMPLES      2  /* just for electrical noise filtering */
+#define ADC_SAMPLES      1  /* just for electrical noise filtering */
 #define ADC_INTERVAL     1  /* mS between averaged samples */
 double  adcsum = 0;         /* accumulator used for averaging */
 
@@ -661,7 +664,7 @@ float gas_v_to_ppm(int formula, float bits)  {
 #define NEOPXL_COUNT  30  /* total number of neopixels in the string */
 /* NEOPXL_PIN defined above in hardware section */
 #define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
-#define NEOPXL_WAIT   20  /* time to wait after .show() */
+#define NEOPXL_WAIT   2  /* time to wait after .show() */
 
 /*
  * Define the parameters that describe neopixel playout modes
@@ -670,15 +673,11 @@ float gas_v_to_ppm(int formula, float bits)  {
 
 #define NEOPXL_MODE_COLOR  1  /* play the current out on range below with color palette */
 #define NEOPXL_COLOR_START 0  /* starting pixel for COLOR mode */
-#define NEOPXL_COLOR_END  15  /* ending pixel for COLOR mode */
+#define NEOPXL_COLOR_END  14  /* ending pixel for COLOR mode */
 #define NEOPXL_COLOR_MIN   0  /* map this to the bottom of the color palette */
 #define NEOPXL_COLOR_MAX  20  /* map this to the top of the color palette */
 
-#define NEOPXL_MODE_VU     2  /* play the current out on subset of pixels as vu meter */
-#define NEOPXL_VU_START   16  /* starting pixel for VU mode */
-#define NEOPXL_VU_END     29  /* ending pixel for VU mode */
-#define NEOPXL_VU_BASE (float)0.1  /* baseline brighness for the VU scale */
-
+/* see below for VU meter #defines, functions, etc. */
 
 #ifdef NEOPIXELS
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
@@ -688,7 +687,7 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + 
  * saves the neopixel mode that is sent via mqtt
  * set the value equal to the default value
  */
-int neopxl_mode = NEOPXL_MODE_OFF;  /* active neopixel mode */
+int neopxl_mode = NEOPXL_MODE_COLOR;  /* active neopixel mode */
 int nneopxl_mode = NEOPXL_MODE_COLOR;  /* "new" neopxl_mode received */
 bool neopxl_mode_valid; /* has the neopxl_mode been set by incoming mqtt message */
 int neopxl_color_max = NEOPXL_COLOR_MAX;  /* map the top of neopixel color range to this */
@@ -755,8 +754,91 @@ void neopxl_color_palette_set(int color_index, float brightness, int neopxl_star
   #endif 
 }
 
+/*
+ * Neopixel VU mode
+ */
+#define NEOPXL_MODE_VU     2  /* play the current out on subset of pixels as vu meter */
+#define NEOPXL_VU_START   15  /* starting pixel for VU mode */
+#define NEOPXL_VU_END     29  /* ending pixel for VU mode */
 
 
+struct vu_meter {
+  uint8_t r_on;  /* rgb for on state */
+  uint8_t g_on;
+  uint8_t b_on;
+  uint8_t r_off; /* rgb for off state */
+  uint8_t g_off;
+  uint8_t b_off;
+};
+
+/*
+ * define the on/off colors for each pixel
+ * NOTE: setup for exactly 15 pixels (i.e. half of a 30 pixel strand)
+ */
+#define NEOPXL_VU_MAX 15
+struct vu_meter neopixel_vu[15]  {
+  {  0, 127, 0,    0, 15, 0 }, /* 0 : green */
+  {  7, 127, 0,    3, 15, 0 }, /* 1 */
+  { 15, 127, 0,    6, 15, 0 }, /* 2 */
+  { 31, 127, 0,    9, 15, 0 }, /* 3 */
+  { 63, 127, 0,   12, 15, 0 }, /* 4 */
+  {127, 127, 0,   15, 15, 0 }, /* 5 : yellow */
+  {127,  63, 0,   15, 12, 0 }, /* 6 */
+  {127,  31, 0,   15,  9, 0 }, /* 7 */
+  {127,  15, 0,   15,  6, 0 }, /* 8 */
+  {127,   0, 0,   15,  3, 0 }, /* 9 */
+  {127,   0, 0,   15,  0, 0 }, /* 10 : red */
+  {127,   0, 0,   15,  0, 0 }, /* 11 */
+  {127,   0, 0,   15,  0, 0 }, /* 12 */
+  {127,   0, 0,   15,  0, 0 }, /* 13 */
+  {127,   0, 0,   15,  0, 0 }, /* 14 */
+};
+
+/*
+ * set the vu meter according to the integer signal level color_index
+ * 
+ * if the pixel index is less than or equal to the signal, set it to the on
+ * (expected to be brighter) state.
+ * if the pixel index is greater than the signal, set it to the off/dimmer state.
+ * 
+ * need i to represent the pixel number (not starting at 0), and k to index the
+ * the brightness/color array (starting at 0).
+ */
+void neopxl_vu_set(int color_index)  {
+
+  uint8_t r, g, b;
+  int i, k;
+
+  for(i = NEOPXL_VU_START, k = 0; i <= NEOPXL_VU_END; i++, k++)  {
+    /*
+     * set all pixels below the signal level to on/brighter state
+     */
+    if(k <= color_index)  {
+      r = neopixel_vu[k].r_on;
+      g = neopixel_vu[k].g_on;
+      b = neopixel_vu[k].b_on;
+    }
+    /*
+     * set all pixels above the signal level to the off/dimmer state
+     */
+    else  {
+      r = neopixel_vu[k].r_off;
+      g = neopixel_vu[k].g_off;
+      b = neopixel_vu[k].b_off;
+    }
+#ifdef FL_DEBUG_MSG
+    Serial.print("k =  "); Serial.print(k);
+    Serial.print(" r:");Serial.print(r);
+    Serial.print(" g:");Serial.print(g);
+    Serial.print(" b:");Serial.println(b);
+    Serial.print("Setting pixel ");Serial.println(i);
+#endif
+
+    strip.setPixelColor(i, r, g, b);
+  }
+  strip.show();
+  delay(NEOPXL_WAIT);
+}
 
 /* 
  *  NIST NETWORK TIME
@@ -910,6 +992,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   /*
    * burp out the json parts structure
    */
+  Serial.print("json_level = ");Serial.println(json_level);
   for (i = 0; i < JSON_DEPTH_LMT; i++)  {
     Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
     Serial.print(json_parts[i].label);Serial.print("<-");
@@ -1080,10 +1163,10 @@ String json_sample(String parm, int value, String location, String tstamp)  {
  * 
  * checks to make sure all levels are closed and returns error if not
  */
-int simple_json_parser(char buffer[])
+int simple_json_parser(char jbuffer[])
 {
 
-  char *pbuffer = buffer;
+  char *pbuffer = jbuffer;
   int depth = -1; /* how far deep into the string and buffer */
   int max_depth = 0;
   int i = 0, j = 0, k = 0;
@@ -1098,15 +1181,26 @@ int simple_json_parser(char buffer[])
     json_parts[i].value[0] = '\0';
     json_parts[i].closed = true;
   }
-
-
+#ifdef FFL_DEBUG_MSG
+  Serial.println("json_parts[] initialized to:");
+  for (i = 0; i < JSON_DEPTH_LMT; i++)  {
+    Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
+    Serial.print(json_parts[i].label);Serial.print("<-");
+    Serial.print(" value = ->");Serial.print(json_parts[i].value);Serial.println("<-");
+  }
+#endif
   while(*pbuffer != '\0')  {
-
+#ifdef FFL_DEBUG_MSG
+    Serial.print("Processing :");Serial.println(*pbuffer);
+#endif
     switch(*pbuffer)  {
       case ' ':
         break;
       case '{':
         depth++; /* starting a new label for a new pair */
+#ifdef FFL_DEBUG_MSG
+        Serial.print("opening level:");Serial.println(depth);
+#endif
         if(depth > max_depth)  /* for the return value */
           max_depth = depth;
         json_parts[depth].pvalue = json_parts[depth].label;  /* technically not necessary */
@@ -1125,7 +1219,10 @@ int simple_json_parser(char buffer[])
         break;
 
       case '}':  /* always terminating a value */
-        json_parts[depth].pvalue = '\0';
+#ifdef FFL_DEBUG_MSG
+        Serial.print("closing level:");Serial.println(depth);
+#endif
+        *(json_parts[depth].pvalue) = '\0';
         json_parts[depth].closed = true;
 
         /*
@@ -1134,7 +1231,7 @@ int simple_json_parser(char buffer[])
          */
         k = depth - 1;
         while(k >= 0)  {
-          *(json_parts[k].pvalue++) = *pbuffer;
+          *(json_parts[k].pvalue)++ = *pbuffer;
           k--;
         }
 
@@ -1143,7 +1240,8 @@ int simple_json_parser(char buffer[])
         break;
 
       case ':':  /* colon will always terminate label */
-        json_parts[depth].pvalue = '\0';  /* terminate the label */
+
+        *(json_parts[depth].pvalue) = '\0';  /* terminate the label */
  
         /*
          * fill the character into the value string for all to the start
@@ -1151,11 +1249,14 @@ int simple_json_parser(char buffer[])
          */
         k = depth - 1;
         while(k >= 0)  {
-          *(json_parts[k].pvalue++) = *pbuffer;
+          *(json_parts[k].pvalue)++ = *pbuffer;
           k--;
         }
 
         json_parts[depth].pvalue = json_parts[depth].value;
+#ifdef FFL_DEBUG_MSG
+        Serial.print("switched to .value on level:");Serial.println(depth);
+#endif
         break;
 
       default:
@@ -1174,6 +1275,14 @@ int simple_json_parser(char buffer[])
     if(json_parts[i].closed == false)
       return(-1);
   }
+#ifdef FFL_DEBUG_MSG
+    Serial.println("json_parts[] after parsing:");
+    for (i = 0; i < JSON_DEPTH_LMT; i++)  {
+      Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
+      Serial.print(json_parts[i].label);Serial.print("<-");
+      Serial.print(" value = ->");Serial.print(json_parts[i].value);Serial.println("<-");
+    }
+#endif
   return(max_depth);                                                                                                                                                                                                                                                            
 }
 
@@ -1193,8 +1302,6 @@ String   enviro, timestamp;  /* pointer to the MQTT payload */
 void setup() {
   int i = 0;
 
-
-  
   Serial.begin(115200);  
 
   /*
@@ -1229,9 +1336,58 @@ void setup() {
   LMQTTConnect(true);
 
   // subscribe to the topics specified above
-  if (mqtt.connected())
+  if (mqtt.connected())  {
     MQTT_Subscribe();
+
+    /*
+     * Synchronize with the data broker by publishing the local
+     * values of neopixel mode and neopixel range
+     * (couldn't figure out a way to force a read on subscribe() )
+     * NOTE: format is simpler, cant use json_sample()
+     * "{ "neopxl_mode":{ "value": 1}}"
+     * "{"neopxl_range":{"value":8}}"
+     * 
+     */
+  
+    enviro =          String("{ \"neopxl_mode\":");
+    enviro = enviro +   String("{ \"value\": ") + String(neopxl_mode) + String("}");
+    enviro = enviro + String("}");
+     
+#ifdef L_DEBUG_MSG
+    Serial.print("Sending neopxl_mode in setup: ");
 #endif
+      
+    if (mqtt.publish(TOPIC_NEOPXL_MODE, (char*) enviro.c_str()))
+#ifdef L_DEBUG_MSG
+      Serial.println("Publish ok")
+#endif
+      ;
+    else
+#ifdef L_DEBUG_MSG
+      Serial.println("Publish failed")
+#endif
+      ;
+      
+    enviro =          String("{ \"neopxl_color_max\":");
+    enviro = enviro +   String("{ \"value\": ") + String(neopxl_color_max) + String("}");
+    enviro = enviro + String("}");
+    
+#ifdef L_DEBUG_MSG
+    Serial.print("Sending neopxl_color_max in setup: ");
+#endif
+      
+    if (mqtt.publish(TOPIC_NEOPXL_RANGE, (char*) enviro.c_str()))
+#ifdef L_DEBUG_MSG
+      Serial.println("Publish ok")
+#endif
+      ;
+    else
+#ifdef L_DEBUG_MSG
+      Serial.println("Publish failed")
+#endif
+      ;
+  }
+#endif /* WIFI_ON */
 
 #ifdef HTU21DF_P
   // Setup the temp and humidity sensor
@@ -1310,21 +1466,31 @@ void loop() {
      * set the output ACQ_ACTIVE high at start, low at end of acq cycle
      */
 
-    digitalWrite(ACQ_ACTIVE,true);
+    digitalWrite(ACQ_ACTIVE,true); /* for monitoring timing with scope */
     
     for (i = 0; i < ADC_CHANNELS; i++)  {   /* loop through the adc channels */
-      adcsum = 0;
-      for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
-        adcsum += ads.readADC_SingleEnded(i);
-        delay(ADC_INTERVAL);
+      /*
+       * speed things up if we're not averaging samples per reading
+       * (different than running average, which always happens)
+       */
+      if(ADC_SAMPLES == 1)
+        adc[i][ADC_AVG_SAMPLES-1] = ads.readADC_SingleEnded(i); /* put it in the last running average slot */
+      else  {
+        adcsum = 0;
+        for(j = 0; j < ADC_SAMPLES; j++)  {  /* make the requested number of samples in the average */
+          adcsum += ads.readADC_SingleEnded(i);
+          delay(ADC_INTERVAL);
+        }
+        adc[i][ADC_AVG_SAMPLES-1] = round(adcsum / ADC_SAMPLES); /* put it in the last running average slot */
       }
-      adc[i][ADC_AVG_SAMPLES-1] = round(adcsum / ADC_SAMPLES); // put it in the last running average slot
-    #ifdef FL_DEBUG_MSG
-      Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("] = "); Serial.println(adc[i][ADC_AVG_SAMPLES-1]);
-    #endif
+#ifdef FL_DEBUG_MSG
+      Serial.print("Instantaneous ADC["); Serial.print(i); Serial.print("] = ");
+      Serial.println(adc[i][ADC_AVG_SAMPLES-1]);
+#endif
+
     }
 
-    digitalWrite(ACQ_ACTIVE,false);
+    digitalWrite(ACQ_ACTIVE,false); /* for monitoring timing with scope */
 
     /*
      * calculate the running average
@@ -1410,8 +1576,6 @@ void loop() {
     case NEOPXL_MODE_OFF:
       /*
        * write the current reading to a color on the neopixel strip
-       * NOTE: at this writing, I'm taking advantage of the fact that
-       * the number of colors is about the same as the range of amps expected.
        */
       neopxl_color_palette_set(0, 0, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
       break;
@@ -1429,6 +1593,17 @@ void loop() {
       neopxl_color_palette_set(i, NEOPXL_BRT, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
       break;
 
+    case NEOPXL_MODE_VU:
+      i = constrain(
+        map(INA169_Iamps, 0, neopxl_color_max, 0, NEOPXL_VU_MAX),
+        0, NEOPXL_VU_MAX);
+#ifdef FL_DEBUG_MSG
+      Serial.println("neopxl mode NEOPXL_MODE_VU executing");
+      Serial.print("  level = ");Serial.println(i);
+#endif
+      neopxl_vu_set(i);
+      break;
+      
     default:
       break;
     }
@@ -1449,7 +1624,7 @@ void loop() {
     Serial.println();
   #endif
     acqTimerOccured = false;
-  }  /* end of fast acquisition loop */
+  }  /* end of FAST acquisition loop */
 
   /*
    * check for the publish/SLOWER TICK TIMER
@@ -1473,6 +1648,7 @@ void loop() {
       if(nneopxl_mode != neopxl_mode)  {
         neopxl_mode = nneopxl_mode;
         Serial.print("Setting new neopxl_mode to:");Serial.println(neopxl_mode);
+        neopxl_color_palette_set(0, 0, 0, (NEOPXL_COUNT-1));
       }
     }
     
