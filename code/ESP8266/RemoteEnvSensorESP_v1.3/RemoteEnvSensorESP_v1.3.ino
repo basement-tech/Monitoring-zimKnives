@@ -86,7 +86,7 @@
  *   setup all of the hardware
  *   
  * LOOP:
- *   Fast acquisition loop
+ *   Fast acquisition loop (currently requiring 12-15 mS to execute)
  *     ATD (or A/D if you prefer) acquitision
  *     calculate running average of atd readings
  *     thermistor conversion to degrees (adc channels)
@@ -146,6 +146,8 @@
  *   like a gain on the mapping from current to neopixel color
  * + FIXED A MAJOR BUG IN json parser relating to termination of strings
  * + made some things more efficient and reduced the fast cycle time to 50mS
+ * + implemented _INIT topics to sync nodered w/ the neopxl_mode and _range
+ *   (worked for _range, but need to work out on nodered how to use _mode)
  *
  * 
  * v1.2:
@@ -283,6 +285,11 @@
 //Subscribe:
 #define TOPIC_NEOPXL_MODE  "zk-cncrtr/neopxl_mode"
 #define TOPIC_NEOPXL_RANGE "zk-cncrtr/neopxl_range"
+
+// Special initialization topics
+// (sent once at startup to sync nodered w/ this software)
+#define TOPIC_NEOPXL_MODE_INIT  "zk-cncrtr/neopxl_mode_init"
+#define TOPIC_NEOPXL_RANGE_INIT "zk-cncrtr/neopxl_range_init"
 
 /*
  * list of topics to which to subscribe
@@ -1357,7 +1364,7 @@ void setup() {
     Serial.print("Sending neopxl_mode in setup: ");
 #endif
       
-    if (mqtt.publish(TOPIC_NEOPXL_MODE, (char*) enviro.c_str()))
+    if (mqtt.publish(TOPIC_NEOPXL_MODE_INIT, (char*) enviro.c_str()))
 #ifdef L_DEBUG_MSG
       Serial.println("Publish ok")
 #endif
@@ -1376,7 +1383,7 @@ void setup() {
     Serial.print("Sending neopxl_color_max in setup: ");
 #endif
       
-    if (mqtt.publish(TOPIC_NEOPXL_RANGE, (char*) enviro.c_str()))
+    if (mqtt.publish(TOPIC_NEOPXL_RANGE_INIT, (char*) enviro.c_str()))
 #ifdef L_DEBUG_MSG
       Serial.println("Publish ok")
 #endif
@@ -1490,7 +1497,6 @@ void loop() {
 
     }
 
-    digitalWrite(ACQ_ACTIVE,false); /* for monitoring timing with scope */
 
     /*
      * calculate the running average
@@ -1624,7 +1630,13 @@ void loop() {
     Serial.println();
   #endif
     acqTimerOccured = false;
+
+    
+    digitalWrite(ACQ_ACTIVE,false); /* for monitoring timing with scope */
+    
   }  /* end of FAST acquisition loop */
+
+
 
   /*
    * check for the publish/SLOWER TICK TIMER
