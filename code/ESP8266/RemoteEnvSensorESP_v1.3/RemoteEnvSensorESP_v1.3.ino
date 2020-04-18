@@ -1,5 +1,7 @@
 
 
+
+
 /*
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of these words as published by the author.
@@ -70,6 +72,7 @@
  * Top: This comment section
  * Support functions and #defines:
  *   HARDWARE   (pins and what modules are present)
+ *   EEPROM     (for storing persistent data like WIFI credentials)
  *   WIFI       (ssid/password)
  *   MQTT       (topics and mosquito location)
  *   BEHAVIORAL (timing, retrys, etc )
@@ -117,7 +120,7 @@
  * + add separate calibrations to thermistor structure
  * + add the location to the json string
  * + decide if there is a way to dynamically configure the network/hardware config
- * + add flash based config file (json) (e.g. MQTT server, timezone, etc.) ... use EEPROM lib
+ * + add more parameters to the EEPROM based data(E.g. timezone, etc.)
  * + if the NIST time sync fails, annotate the time with an asterisk
  * + implement a red "failed" light
  * + add the ability to reboot remotely from a data broker topic flag; maybe heartbeat
@@ -148,6 +151,8 @@
  * + made some things more efficient and reduced the fast cycle time to 50mS
  * + implemented _INIT topics to sync nodered w/ the neopxl_mode and _range
  *   (worked for _range, but need to work out on nodered how to use _mode)
+ * + added some basic parameters to the EEPROM and implemented a way to interrupt
+ *   the boot to enter new data and store in the EEPROM
  *
  * 
  * v1.2:
@@ -213,6 +218,7 @@
 #include <Adafruit_ADS1015.h>
 #include <user_interface.h>  /* for os timer functionality */
 #include <Adafruit_NeoPixel.h>
+#include <EEPROM.h>
 
 
 
@@ -242,23 +248,6 @@
 #define NEOPIXELS       // neopixels are present
 
 
-/********************* WIFI Access Point ***********************/
-
-
-
-
-// home
-#define WLAN_SSID       "ZEther-2G"
-#define WLAN_PASS       "FAIL"
-#define LOCATION        "Basement_Tech"
-
-
-
-/*********************  MQTT Server Info  *********************/
-//#define SERVER      "192.168.1.10"
-//#define SERVERPORT  1883
-#define SERVER        "192.168.1.24"
-#define SERVERPORT    52065
 
 /********************* MQTT Payload Information ***************/
 
@@ -882,6 +871,149 @@ Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
 uint8_t cncrtr_estop;
 
+
+/*
+ * EEPROM
+ * ------
+ * this section deals with writing the persistent parameters
+ * to the EEPROM and reading them on subsequent reboots
+ * E.g. WIFI credentials
+ */
+ 
+/*
+ * string to match for validation
+ * this indicates the version/structure of the EEPROM too.
+ * be sure to update this string if you change the 
+ * net_config struct below.
+ */
+#define EEPROM_VALID  "valid_v1.3.0"
+ 
+/*
+ * this is the size of the EERPOM segment that is accessible
+ * by the EEPROM class.
+ * this has to be greater than or equal to 
+ * the size of the net_config struct below.
+ */
+ 
+#define EEPROM_RESERVE 1024
+
+/*
+ * map of the parameters stored in EEPROM
+ * the EEPROM class is smart enough to deal with
+ * custom types, so even if things are added here,
+ * the rest of the code should work.
+ */
+struct net_config  {
+char valid[32];
+char wlan_ssid[64];
+char wlan_pass[64];
+char mqtt_server[64];
+char mqtt_server_port[16];
+char mqtt_location[64];
+};
+
+struct net_config mon_config;
+
+/*
+ * read exactly the number of bytes from eeprom 
+ * that match[] is long and compare to see if the eeprom has
+ * ever been written with a valid set of data from this
+ * exact revision.
+ * 
+ * returns the value of strcmp()
+ */
+bool eeprom_validation(char match[])  {
+  int mlen;
+  char ebuf[32];
+  char in;
+  int i;
+
+  mlen = strlen(match);
+
+  for(i = 0; i < mlen; i++)
+    ebuf[i] = EEPROM.get(i, in);
+  ebuf[i] = '\0';
+  
+#ifdef FL_DEBUG_MSG
+  Serial.print("match ->");Serial.print(match); Serial.println("<-");
+  Serial.print("ebuf ->");Serial.print(ebuf); Serial.println("<-");
+#endif
+  
+  return(strcmp(match, ebuf));
+}
+
+/*
+ * OK, I just got tired of trying to figure out the available libraries.
+ * This function reads characters from the Serial port until an end-of-line
+ * of some sort is encountered.
+ * 
+ * I couldn't get it to terminate using the Arduino IDE Monitor, but
+ * using minicom under Ubuntu, a ctl-J would cause it to terminate.
+ * That will do for this application.
+ * 
+ * buf : is a buffer to which to store the read data
+ * blen : is meant to indicate the size of buf
+ * echo : whether to echo the characters or not 
+ * 
+ * Return the number of characters read, not counting the end of line,
+ * which is over-written with a string terminator ('\0').
+ * 
+ */
+int l_read_string(char *buf, int blen, bool echo)  {
+  int count = 0;
+  bool out = false;
+  char cbuf;
+
+  while((out == false) && (count < blen))  {
+    if(Serial.available() > 0)  {
+      *buf = Serial.read();
+#ifdef FL_DEBUG_MSG
+      Serial.print("char=");Serial.print(*buf);Serial.println(*buf, HEX);
+#endif
+      if(echo == true)
+        Serial.print(*buf);
+      switch(*buf)  {
+        /*
+         * terminate the string and get out
+         */
+        case '\n':
+          *buf = '\0';
+          out = true;
+        break;
+
+        case '\r':
+          *buf = '\0';
+          out = true;
+        break;
+
+        /* 
+         * backspace: don't increment the buffer pointer which
+         * allows this character to be written over by the next
+         */
+        case '\b':
+          if(count > 0)
+            buf--;
+            count--;
+            Serial.print(" \b");  /* blank out the character */
+          break;
+
+        /*          
+         * normal character
+         */
+        default:
+          buf++;
+          count++;
+        break;
+      }
+    }
+  }
+
+  if(out == true)
+    return(count);
+  else
+    return(-count);
+}
+
 /*
  * WIFI
  */
@@ -907,8 +1039,8 @@ wl_status_t  LWifiConnect(bool first)  {
    */
   if(first == true)  {
     Serial.print("Connecting to ");
-    Serial.println(WLAN_SSID);
-    WiFi.begin(WLAN_SSID, WLAN_PASS);
+    Serial.println(mon_config.wlan_ssid);
+    WiFi.begin(mon_config.wlan_ssid, mon_config.wlan_pass);
     
     // Wait for the connection to succeed
     while ((WiFi.status() != WL_CONNECTED) && (i++ < INITIAL_WIFI_WAIT)) {
@@ -922,7 +1054,7 @@ wl_status_t  LWifiConnect(bool first)  {
    */
   else  {
     Serial.print("Re-connecting to ");
-    Serial.println(WLAN_SSID);
+    Serial.println(mon_config.wlan_ssid);
   }
 
   Serial.println();
@@ -1039,7 +1171,7 @@ String macToStr(const uint8_t* mac)
 
 
 // Setup the MQTT client class by passing in the WiFi client and MQTT server
-PubSubClient mqtt(SERVER, SERVERPORT, callback, WiFiclient);
+PubSubClient mqtt(WiFiclient);
 
 
 /*
@@ -1085,7 +1217,7 @@ bool LMQTTConnect(bool first)  {
     Serial.print("Attempting connection to MQTT ");
   else
     Serial.print("Attempting re-connection to MQTT ");
-  Serial.print(SERVER);
+  Serial.print(mon_config.mqtt_server);
   Serial.print(" as ");
   Serial.println(clientName);
   
@@ -1308,6 +1440,11 @@ String   enviro, timestamp;  /* pointer to the MQTT payload */
  */
 void setup() {
   int i = 0;
+  char inChar;
+  char inbuf[64];
+  bool out = false;
+  uint16_t mqtt_port;
+
 
   Serial.begin(115200);  
 
@@ -1321,6 +1458,134 @@ void setup() {
 
   pinMode(ACQ_ACTIVE, OUTPUT);  // for monitoring acq timing via scope
   digitalWrite(ACQ_ACTIVE,false);
+  EEPROM.begin(EEPROM_RESERVE);
+
+  Serial.println("Starting ...");
+  
+  Serial.println("Press any key to change settings");
+
+  i = 5;
+  out = false;
+  while((out == false) && (i > 0))  {
+    Serial.print(i);Serial.print(" . ");
+  // check for incoming serial data:
+    if (Serial.available() > 0) {
+      // read incoming serial data:
+      inChar = Serial.read();
+      out = true;
+    }
+    delay(1000);
+    i--;
+  }
+  Serial.println();
+
+  /*
+   * if the user entered a character and caused the above
+   * while() to exit before the timeout, prompt the user to 
+   * enter new network and mqtt configuration data
+   * 
+   * present previous, valid data from EEPROM as defaults
+   */
+  if(out == true)  {
+
+    if(eeprom_validation(EEPROM_VALID) == 0)  {
+      EEPROM.get(0, mon_config);
+      Serial.println("Previous EEPROM data:");
+      Serial.print("Validation: ");Serial.println(mon_config.valid);
+      Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
+      Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
+      Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
+      Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
+      Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+    }
+    Serial.println();
+    
+    Serial.println("Press <enter> alone to accept previous EEPROM value shown");
+    Serial.print("Enter WIFI SSID[");Serial.print(mon_config.wlan_ssid);Serial.print("]: ");
+    if(l_read_string(inbuf, sizeof(inbuf), true) > 0)
+      strcpy(mon_config.wlan_ssid, inbuf);
+    Serial.println();
+      
+    Serial.print("Enter WIFI Password[");Serial.print(mon_config.wlan_pass);Serial.print("]: ");
+    if(l_read_string(inbuf, sizeof(inbuf), true) > 0)
+      strcpy(mon_config.wlan_pass, inbuf);
+    Serial.println();
+    
+    Serial.print("Enter mqtt server IP address (x.x.x.x)[");Serial.print(mon_config.mqtt_server);Serial.print("]: ");
+    if(l_read_string(inbuf, sizeof(inbuf), true) > 0)
+      strcpy(mon_config.mqtt_server, inbuf);
+    Serial.println();
+    
+    Serial.print("Enter mqtt server port[");Serial.print(mon_config.mqtt_server_port);Serial.print("]: ");
+    if(l_read_string(inbuf, sizeof(inbuf), true) > 0)
+      strcpy(mon_config.mqtt_server_port, inbuf);
+    Serial.println();
+    
+    Serial.print("Enter location[");Serial.print(mon_config.mqtt_location);Serial.print("]: ");
+    if(l_read_string(inbuf, sizeof(inbuf), true) > 0)
+      strcpy(mon_config.mqtt_location, inbuf);
+    Serial.println();
+  
+    Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
+    Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
+    Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
+    Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
+    Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+    Serial.print("Press any key to accept, or reset to correct");
+  
+    while(Serial.available() <= 0);
+    Serial.read();
+    Serial.println();
+    
+    /*
+     * if agreed, write the new data to the EEPROM and use it
+     */
+    if(eeprom_validation(EEPROM_VALID) == 0)
+      Serial.print("EEPROM: previous data exists ... ");
+    else
+      Serial.print("EEPROM data never initialized ... ");
+      
+    Serial.print("overwrite with new values? ('y' or 'n'):");
+    out = false;
+    do {
+      l_read_string(inbuf, sizeof(inbuf), true);
+      if(strcmp(inbuf, "y") == 0)
+        out = true;
+      else if (strcmp(inbuf, "n") == 0)
+        out = true;
+      else  {
+        Serial.println();
+        Serial.print("EEPROM data valid ... overwrite with new values? ('y' or 'n'):");
+      }
+    } while(out == false);
+    Serial.println();
+
+    /*
+     * write the data to EEPROM if an affirmative answer was given
+     */
+    if(strcmp(inbuf, "y") == 0)  {
+      Serial.println("Writing data to EEPROM ...");
+      strcpy(mon_config.valid, EEPROM_VALID);
+      EEPROM.put(0, mon_config);
+      EEPROM.commit();
+    }
+  } /* entering new data */
+  
+  if(eeprom_validation(EEPROM_VALID) == 0)  {
+    EEPROM.get(0, mon_config);
+    Serial.println("EEPROM data valid ... using it:");
+    Serial.print("Validation: ");Serial.println(mon_config.valid);
+    Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
+    Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
+    Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
+    Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
+    Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+  }
+  else  {
+    Serial.println("EEPROM data NOT valid ... reset and try enter valid data");
+    Serial.read();
+  }
+
   
 #ifdef WIFI_ON
   /* 
@@ -1338,6 +1603,12 @@ void setup() {
   // Get the first update from the NIST server
   if(timeClient.update() == true)
     Serial.println("NIST provided the time successfully");
+    
+  // Finish setting up the mqtt class instance now that I know everything
+  mqtt_port = atoi(mon_config.mqtt_server_port);
+  mqtt.setServer(mon_config.mqtt_server, mqtt_port);
+  mqtt.setCallback(callback);
+//  mqtt.setClient(WiFiclient);
   
   // Setup the MQTT connection and attempt an initial publish
   LMQTTConnect(true);
@@ -1729,7 +2000,7 @@ void loop() {
        */
       timestamp = timeClient.getFormattedTime();
   
-      enviro = json_sample("tstamp", timestamp, LOCATION, timestamp);
+      enviro = json_sample("tstamp", timestamp, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending sample time: ");
     #endif
@@ -1746,7 +2017,7 @@ void loop() {
         
   #ifdef HTU21DF_P
   
-      enviro = json_sample("temp", temp, LOCATION, timestamp);
+      enviro = json_sample("temp", temp, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-temp data: ");
     #endif
@@ -1767,7 +2038,7 @@ void loop() {
        * prep and send the humidity data
        */
        
-      enviro = json_sample("humidity", humidity, LOCATION, timestamp);
+      enviro = json_sample("humidity", humidity, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-hum data: ");
     #endif
@@ -1785,7 +2056,7 @@ void loop() {
   #endif
   
   #ifdef THERMISTORS
-      enviro = json_sample("therm0", therms[0].tempC, LOCATION, timestamp);
+      enviro = json_sample("therm0", therms[0].tempC, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-therm0 data: ");
     #endif
@@ -1801,7 +2072,7 @@ void loop() {
       #endif
         ;
         
-      enviro = json_sample("therm1", therms[1].tempC, LOCATION, timestamp);
+      enviro = json_sample("therm1", therms[1].tempC, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-therm1 data: ");
     #endif
@@ -1819,7 +2090,7 @@ void loop() {
   #endif
 
   #ifdef INA169
-      enviro = json_sample("INA_169_aamps", INA169_Aamps, LOCATION, timestamp);
+      enviro = json_sample("INA_169_aamps", INA169_Aamps, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending INA_169_aamps data: ");
     #endif
@@ -1840,7 +2111,7 @@ void loop() {
       /*
        * send the raw gas sensor data
        */
-      enviro = json_sample("gasrw", gas, LOCATION, timestamp);
+      enviro = json_sample("gasrw", gas, mon_config.location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gasrw data: ");
     #endif
@@ -1859,7 +2130,7 @@ void loop() {
       /*
        * send the gas sensor data converted to PPM as if CO
        */   
-      enviro = json_sample("gasco", gas_v_to_ppm(CARBMONO, gas), LOCATION, timestamp);
+      enviro = json_sample("gasco", gas_v_to_ppm(CARBMONO, gas), mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gasco data as Carbon Monoxide PPM: ");
     #endif
@@ -1878,7 +2149,7 @@ void loop() {
       /*
        * send the gas sensor data converted to PPM as if Propane
        */
-      enviro = json_sample("gaspr", gas_v_to_ppm(PROPANE, gas), LOCATION, timestamp);
+      enviro = json_sample("gaspr", gas_v_to_ppm(PROPANE, gas), mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gaspr data as Propane PPM: ");
     #endif
@@ -1897,7 +2168,7 @@ void loop() {
       /*
        * send the estop pin status
        */
-      enviro = json_sample("estop", cncrtr_estop, LOCATION, timestamp);
+      enviro = json_sample("estop", cncrtr_estop, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending cncrtr_estop data ");
     #endif
