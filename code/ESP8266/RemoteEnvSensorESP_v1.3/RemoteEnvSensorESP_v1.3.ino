@@ -79,6 +79,7 @@
  *   ADS1015    (adc setup, etc.)
  *   THERMISTOR (formulas, etc.)
  *   INA169     (high side current monitor formulas, etc.)
+ *   ACS758     (hall effect current sensor; mutually exclusive to INA169 (i.e. pick one)
  *   MiCS5524   (gas sensor formulas, etc.)
  *   NEOPIXELS  (neopixel characteristics, display modes, etc.)
  *   NIST       (network time functions)
@@ -153,6 +154,7 @@
  *   (worked for _range, but need to work out on nodered how to use _mode)
  * + added some basic parameters to the EEPROM and implemented a way to interrupt
  *   the boot to enter new data and store in the EEPROM
+ * + added support for ACS758 Hall Effect current sensor
  *
  * 
  * v1.2:
@@ -240,12 +242,13 @@
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
  */
-#define WIFI_ON         // Should wifi be enabled; used for debug, not fully vetted
-#define HTU21DF_P       // Is the temp/hum module present
-#define ADS1015_P       // Is the A/D present
+#define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
+#define HTU21DF_P    1  // Is the temp/hum module present
+#define ADS1015_P    1  // Is the A/D present
 #define THERMISTORS  2  // Are we using the A/D to sense thermistors, and how many
-#define INA169          // Is the current shunt present
-#define NEOPIXELS       // neopixels are present
+#define INA169       0  // Is the current shunt present
+#define ACS758       1  // Hall Effect current sensor present
+#define NEOPIXELS    1  // neopixels are present
 
 
 
@@ -548,6 +551,7 @@ struct thermistor therms[THERMISTORS] =
 
 /*
  * HIGH SIDE CURRENT MONITOR (INA169 based)
+ * HALL EFFECT CURRENT SENSOR (ACS758)
  * 
  * Shunt Output Voltage (input to INA169) = Current (Amps) * INA169_shunt_R
  * E.g. INA169_shunt_R = 0.001, 1 A -> 1 mA
@@ -573,12 +577,17 @@ struct thermistor therms[THERMISTORS] =
  *       20 Amps               20 mV             1.36V
  * (designed to be on par with thermistor voltages ... i.e. compatible ADC gain)
  */
-#define INA169_ADCCH 0  /* adc channel for ina169/shunt input */
+#define     INA169_ADCCH     0  /* adc channel for ina169/shunt input */
 const float INA169_shunt_R = 0.001;  /* Current measuring shund resistor */
 const float INA169_load_R  = 68000;  /* Output load resistance */
 const float INA169_Vgain   = INA169_load_R / (float)1000;
-float       INA169_Aamps;  /* running average of current */
-float       INA169_Iamps;  /* instantaneous current value */
+
+/*
+ * these are used for whichever current conversion equation
+ * is used
+ */
+float Aamps;  /* running average of current */
+float Iamps;  /* instantaneous current value */
 
 /*
  * Convert the input voltage to current in amps for the INA169 Current monitor
@@ -591,6 +600,33 @@ float       INA169_Iamps;  /* instantaneous current value */
  */
 float INA169_bits_to_amps(int adc_bits)  {
   return(((adc_bits * adc_V_per_bit(ADC_GAIN))/INA169_Vgain) / INA169_shunt_R);
+}
+
+#define ACS758_ADCCH 0  // adc channel for acs758 current sensor
+#define ACS758_OFFSET  (float)0.600  // V reading at 0 amps
+#define ACS758_GAIN    (float)0.060   // V/amp
+
+/*
+ * conversion equation for the ACS758
+ */
+float ACS758_bits_to_amps(int adc_bits)  {
+  return(((adc_bits * adc_V_per_bit(ADC_GAIN))- ACS758_OFFSET)/ACS758_GAIN);
+}
+
+/*
+ * set the pointer to the conversion function to the appropriate
+ * one for the hardware that is connected
+ */
+#if INA169
+float (*current_bits_to_amps)(int adc_bits) = INA169_bits_to_amps;
+#define CURRENT_ADCCH INA169_ADCCH
+#elif ACS758
+float (*current_bits_to_amps)(int adc_bits) = ACS758_bits_to_amps;
+#define CURRENT_ADCCH ACS758_ADCCH
+#endif
+
+void ACS758_set_offset()  {
+  ;
 }
 
 /*
@@ -1826,18 +1862,18 @@ void loop() {
     
   #endif
 
-  #ifdef INA169
+  #if (INA169 || ACS758)
     /*
      * convert the above read/calculated a/d reading to a current reading in amps
      * 
      * Calculate using the running average for the mqtt publish, and, 
      * the instantaneous for the neopixel output
      */
-    INA169_Iamps = INA169_bits_to_amps(adc[INA169_ADCCH][ADC_AVG_SAMPLES-1]);
-    INA169_Aamps = INA169_bits_to_amps(adc_ravg[INA169_ADCCH]);
+    Iamps = (*current_bits_to_amps)(adc[CURRENT_ADCCH][ADC_AVG_SAMPLES-1]);
+    Aamps = (*current_bits_to_amps)(adc_ravg[CURRENT_ADCCH]);
     
     #ifdef FL_DEBUG_MSG
-      Serial.print("INA169_Aamps = "); Serial.println(INA169_Aamps);
+      Serial.print("Aamps = "); Serial.println(Aamps);
     #endif
   #endif
 
@@ -1864,7 +1900,7 @@ void loop() {
        * remember: map() can map beyond its limits, hence, constrain()
        */
       i = constrain(
-        map(INA169_Iamps, 0, neopxl_color_max, 1, NEOPXL_PAL_MAX),
+        map(Iamps, 0, neopxl_color_max, 1, NEOPXL_PAL_MAX),
         0, NEOPXL_PAL_MAX);
 
       neopxl_color_palette_set(i, NEOPXL_BRT, NEOPXL_COLOR_START, NEOPXL_COLOR_END);
@@ -1872,7 +1908,7 @@ void loop() {
 
     case NEOPXL_MODE_VU:
       i = constrain(
-        map(INA169_Iamps, 0, neopxl_color_max, 0, NEOPXL_VU_MAX),
+        map(Iamps, 0, neopxl_color_max, 0, NEOPXL_VU_MAX),
         0, NEOPXL_VU_MAX);
 #ifdef FL_DEBUG_MSG
       Serial.println("neopxl mode NEOPXL_MODE_VU executing");
@@ -2090,9 +2126,9 @@ void loop() {
   #endif
 
   #ifdef INA169
-      enviro = json_sample("INA_169_aamps", INA169_Aamps, mon_config.mqtt_location, timestamp);
+      enviro = json_sample("Aamps", Aamps, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
-      Serial.print("Sending INA_169_aamps data: ");
+      Serial.print("Sending Aamps data: ");
     #endif
     
     if (mqtt.publish(TOPIC_ENV_AAMPS, (char*) enviro.c_str()))
