@@ -49,7 +49,9 @@
  * Adafruit HTU21D Temp/Humidity i2c module
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
+ * The below current sensors output analog voltages and interface through the ADS1015:
  * Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
+ * Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -87,7 +89,8 @@
  *   MQTT       (mosquito dialog and json processing)
  * 
  * SETUP:
- *   setup all of the hardware
+ *   Allow for editing of the EEPROM parameters
+ *   Setup all of the hardware
  *   
  * LOOP:
  *   Fast acquisition loop (currently requiring 12-15 mS to execute)
@@ -111,20 +114,21 @@
  * Change history:
  * Pending:
  *
- * Now:
- * + potentially move the HTU21D read of temp and humidity to the slow loop
- * + include the topics in the thermistor structure ?
- * + blink the WIFI connected LED for heartbeat
- * + NEED TO INITIALIZE THE neopxl_mode on subscribe or something
- * 
- * Longer term:
- * + add separate calibrations to thermistor structure
- * + add the location to the json string
- * + decide if there is a way to dynamically configure the network/hardware config
- * + add more parameters to the EEPROM based data(E.g. timezone, etc.)
- * + if the NIST time sync fails, annotate the time with an asterisk
- * + implement a red "failed" light
- * + add the ability to reboot remotely from a data broker topic flag; maybe heartbeat
+ * Next (* = PRIORITY):
+ * o potentially move the HTU21D read of temp and humidity to the slow loop
+ * o include the topics in the thermistor structure ?
+ * o blink the WIFI connected LED for heartbeat
+ * o NEED TO INITIALIZE THE neopxl_mode on subscribe or something
+ * o add separate calibrations to thermistor structure
+ * o add the location to the json string
+ * * add more parameters to the EEPROM based data(E.g. timezone, etc.)
+ * o if the NIST time sync fails, annotate the time with an asterisk
+ * o implement a red "failed" light
+ * o add the ability to reboot remotely from a data broker topic flag; maybe heartbeat
+ * o Test out the INA169 path again after the ACS758 edits
+ * * Configure back to the original surveillance hardware (should be just #define config)
+ *   NOTE: I discovered that I didn't really keep up with testing
+ *   the hardware present #defines in ... I KNOW THAT THEY ARE BROKEN
  * 
  * v1.3:
  * + add/rename the topics to accomodate the second, cnc router based data module
@@ -155,6 +159,7 @@
  * + added some basic parameters to the EEPROM and implemented a way to interrupt
  *   the boot to enter new data and store in the EEPROM
  * + added support for ACS758 Hall Effect current sensor
+ *   NOTE: I didn't have a chance yet to go back and test the INA169 path
  *
  * 
  * v1.2:
@@ -241,6 +246,7 @@
  *  which hardware is actually connected?
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
+ *  I used 1's and 0's since I needed some #if's in the code below.
  */
 #define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
 #define HTU21DF_P    1  // Is the temp/hum module present
@@ -693,6 +699,8 @@ float gas_v_to_ppm(int formula, float bits)  {
  *  NEOPIXELS
  *  ---------
  */
+
+
 #define NEOPXL_COUNT  30  /* total number of neopixels in the string */
 /* NEOPXL_PIN defined above in hardware section */
 #define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
@@ -713,7 +721,7 @@ float gas_v_to_ppm(int formula, float bits)  {
 
 #ifdef NEOPIXELS
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
-#endif
+#endif // of NEOPIXELS
 
 /*
  * saves the neopixel mode that is sent via mqtt
@@ -872,6 +880,8 @@ void neopxl_vu_set(int color_index)  {
   delay(NEOPXL_WAIT);
 }
 
+
+
 /* 
  *  NIST NETWORK TIME
  *  -----------------
@@ -983,9 +993,7 @@ bool eeprom_validation(char match[])  {
  * This function reads characters from the Serial port until an end-of-line
  * of some sort is encountered.
  * 
- * I couldn't get it to terminate using the Arduino IDE Monitor, but
- * using minicom under Ubuntu, a ctl-J would cause it to terminate.
- * That will do for this application.
+ * I used minicom under ubuntu to interact with this function successfully.
  * 
  * buf : is a buffer to which to store the read data
  * blen : is meant to indicate the size of buf
