@@ -1,7 +1,4 @@
 
-
-
-
 /*
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of these words as published by the author.
@@ -18,7 +15,7 @@
  * 
  * RemoteEnvSensorESP
  * Daniel J. Zimmerman
- * 12/06/17 - 3/30/2020
+ * 12/06/17 - 4/30/2020
  * 
  ****************************************************************************
  * Firmware to acquire environmental parameters and send via mqtt to broker *
@@ -50,8 +47,8 @@
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
  * The below current sensors output analog voltages and interface through the ADS1015:
- * Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
- * Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
+ *   Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
+ *   Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -91,14 +88,18 @@
  * SETUP:
  *   Allow for editing of the EEPROM parameters
  *   Setup all of the hardware
+ *   Sync the default neopixel mode and range values with mosquitto/nodered
+ *   Initialize the parameter structures
  *   
  * LOOP:
  *   Fast acquisition loop (currently requiring 12-15 mS to execute)
+ *     read the momentary contact switch,
+ *        remember if yes and adjust the neopixel mode in the slow loop
  *     ATD (or A/D if you prefer) acquitision
  *     calculate running average of atd readings
  *     thermistor conversion to degrees (adc channels)
- *     INA169: convert to amps
- *     Neopixels: adjust based on display mode
+ *     INA169: convert to amps OR ACS758 convert to amps
+ *     Neopixels: adjust led's based on display mode
  *     read the estop input bit
  *     execute mqtt.loop() to check for incoming mqtt
  *     
@@ -116,27 +117,35 @@
  *
  * Next (* = PRIORITY):
  * o potentially move the HTU21D read of temp and humidity to the slow loop
- * o include the topics in the thermistor structure ?
  * o blink the WIFI connected LED for heartbeat
- * o add separate calibrations to thermistor structure
- * o add the location to the json string
- * * add more parameters to the EEPROM based data(E.g. timezone, etc.)
  * o if the NIST time sync fails, annotate the time with an asterisk
  * o implement a red "failed" light
  * o add the ability to reboot remotely from a data broker topic flag; maybe heartbeat
  * o Test out the INA169 path again after the ACS758 edits
- * * Configure back to the original surveillance hardware (should be just #define config)
- *   NOTE: I discovered that I didn't really keep up with testing
- *   the hardware present #defines in ... I KNOW THAT THEY ARE BROKEN
  * o add a neopixel_mode that displays temps and humidity (for WIFI_ON off)
+ * o add a neopixel_mode to display heatsink temps
+ * * add a "worklight" neopixel mode
+ * o for fun, add a neopixel chase mode to show off
+ * o include the topics in the thermistor structure
+ * o connect the thermistor structure to the EEPROM values
  * 
- * v1.4:
+ * v1.4 (in mostly chronological order):
  * + solved the issue with local/node-red neopixel mode sync (chg in nodered flow)
- * + implemented a momentary contact switch input (pin 16)
+ * + implemented a momentary contact switch input on MOM_SWITCH
+ *   (initially on pin 16, with no end of issues ... moved to pin 14)
+ *   (also, implemented as interrupt driven input)
  * + implemented manual change of neopixel mode with momentary contact switch
  * + implemented structure to make adding more EEPROM parameters easier
+ * + added sample time offset and calibration parameters to EEPROM
+ * + added separate calibrations to thermistor structure
+ * + added more parameters to the EEPROM based data(E.g. timezone, cal factors.)
+ * + fixed THERMISTORS to indicate their presence and had to add THERM_CNT
+ * + added back MICS5524 gas calculation
+ * + added #define for ESTOP, mostly to keep it from being sent via mqtt
+ * + Configured back to the original surveillance hardware (#define config)
+ *   (tested gas, temp, humidity, stime ... looks good on the bench)
  * 
- * v1.3:
+ * v1.3 (in chronological order):
  * + add/rename the topics to accomodate the second, cnc router based data module
  * + clarified/added pin defines and added direction setup
  * + added a reboot on repeated failures of the wifi connect
@@ -233,6 +242,16 @@
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 
+/*
+ * ************** PICK WHICH SENSING HARDWARE ***************************
+ * 
+ * pick for which hardware this software is being built.
+ * AT THIS WRITING, THERE ARE NO HARDWARE CONFLICTS ...
+ *   so no conditional config on hardware pins
+ * (CHOOSE ONLY ONE OPTION by putting "//" before the other one)
+ */
+//#define CNC_REM
+#define ENV_REM
 
 
 /********************* HARDWARE Connections ********************/
@@ -266,28 +285,83 @@
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
  *  I used 1's and 0's since I needed some #if's in the code below.
+ *  comment out the line to mark as NOT present (i.e. #undef).
+ *  
+ *  NOTE: you have to comment out the hardware that isn't there
+ *  to allow multiple sensor devices to exist using the same
+ *  data broker.  i.e. don't want two sensors sending the same topic,
+ *  especially if the hardware to generate the data is not present.
+ *  
  */
+
+
+#ifdef ENV_REM
+
 #define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
 #define HTU21DF_P    1  // Is the temp/hum module present
 #define ADS1015_P    1  // Is the A/D present
-#define THERMISTORS  2  // Are we using the A/D to sense thermistors, and how many
-//#define INA169       0  // Is the current shunt present
+#define MICS5524_P   1  // Is the gas sensor present (requires ADS1015_P)
+//#define THERMISTORS  1  // Are we using the A/D to sense thermistors
+//#define INA169       0  // Is the current shunt present (choose one: INA169 or ACS759)
+//#define ACS758       1  // Hall Effect current sensor present
+//#define NEOPIXELS    1  // neopixels are present
+//#define ESTOP        1  // is there an estop status wire connected
+
+#endif
+
+#ifdef CNC_REM
+
+#define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
+//#define HTU21DF_P    1  // Is the temp/hum module present
+#define ADS1015_P    1  // Is the A/D present
+//#define MICS5524_P   1  // Is the gas sensor present (requires ADS1015_P)
+#define THERMISTORS  1  // Are we using the A/D to sense thermistors
+//#define INA169       0  // Is the current shunt present (choose one: INA169 or ACS759)
 #define ACS758       1  // Hall Effect current sensor present
 #define NEOPIXELS    1  // neopixels are present
+#define ESTOP        1  // is there an estop status wire connected
 
-
+#endif
 
 /********************* MQTT Payload Information ***************/
 
 //Publish:
+
+#ifdef ENV_REM
+
+// This section is used for the free air sensing module
+#define TOPIC_TEST       "PamTest-esp8266"
+#define TOPIC_ENV_TEMP   "zk-env/temp"
+#define TOPIC_ENV_HUM    "zk-env/humidity"
+#define TOPIC_STIME      "zk-env/time"
+#define TOPIC_ENV_GASCO  "zk-env/gasco"
+#define TOPIC_ENV_GASPR  "zk-env/gaspr"
+#define TOPIC_ENV_GASRW  "zk-env/gasrw"
+
+
+// This section is used for the CNC Router sensing module
+//#define TOPIC_TEST       "PamTest-esp8266"
+//#define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
+//#define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
+//#define TOPIC_STIME       "zk-cncrtr/time"
+#define TOPIC_ENV_THERM0  "zk-cncrtr/therm0"
+#define TOPIC_ENV_THERM1  "zk-cncrtr/therm1"
+#define TOPIC_ENV_AAMPS   "zk-cncrtr/aamps"
+#define TOPIC_ENV_ESTOP   "zk-cncrtr/estop"
+
+#endif
+
+#ifdef CNC_REM
+
 // This section is used for the free air sensing module
 //#define TOPIC_TEST       "PamTest-esp8266"
 //#define TOPIC_ENV_TEMP   "zk-env/temp"
 //#define TOPIC_ENV_HUM    "zk-env/humidity"
-//#define TOPIC_ENV_GASCO  "zk-env/gasco"
-//#define TOPIC_ENV_GASPR  "zk-env/gaspr"
-//#define TOPIC_ENV_GASRW  "zk-env/gasrw"
 //#define TOPIC_STIME      "zk-env/time"
+#define TOPIC_ENV_GASCO  "zk-env/gasco"
+#define TOPIC_ENV_GASPR  "zk-env/gaspr"
+#define TOPIC_ENV_GASRW  "zk-env/gasrw"
+
 
 // This section is used for the CNC Router sensing module
 #define TOPIC_TEST       "PamTest-esp8266"
@@ -298,6 +372,8 @@
 #define TOPIC_ENV_THERM1  "zk-cncrtr/therm1"
 #define TOPIC_ENV_AAMPS   "zk-cncrtr/aamps"
 #define TOPIC_ENV_ESTOP   "zk-cncrtr/estop"
+
+#endif
 
 //Subscribe:
 #define TOPIC_NEOPXL_MODE  "zk-cncrtr/neopxl_mode"
@@ -324,11 +400,19 @@ struct parameter {
   bool valid;      /* set to true once a value has been received */
 };
 
+#ifdef CNC_REM
 struct parameter parameters[] = {
   {TOPIC_NEOPXL_MODE,  "", PARM_INT, false},
   {TOPIC_NEOPXL_RANGE, "", PARM_INT, false},
-  {"","",PARM_UND, false}  /* terminate the list */
+  {"","",PARM_UND, false},  /* terminate the list */
 };
+#endif
+
+#ifdef ENV_REM
+struct parameter parameters[] = {
+  {"","",PARM_UND, false},  /* terminate the list */
+};
+#endif
 
 /*
  * convert the string based value from the json string
@@ -463,6 +547,270 @@ void acqTimerCallback(void *pArg)  {
  */
 unsigned long currentMillis = 0, previousMillis = 0;
 
+
+/*
+ * EEPROM
+ * ------
+ * this section deals with writing the persistent parameters
+ * to the EEPROM and reading them on subsequent reboots
+ * E.g. WIFI credentials
+ */
+ 
+/*
+ * string to match for validation
+ * this indicates the version/structure of the EEPROM too.
+ * be sure to update this string if you change the 
+ * net_config struct below.
+ */
+#define EEPROM_VALID  "valid_v1.3.2"
+ 
+/*
+ * this is the size of the EERPOM segment that is accessible
+ * by the EEPROM class.
+ * this has to be greater than or equal to 
+ * the size of the net_config struct below.
+ */
+ 
+#define EEPROM_RESERVE 1024
+
+/*
+ * map of the parameters stored in EEPROM
+ * the EEPROM class is smart enough to deal with
+ * custom types, so even if things are added here,
+ * the rest of the code should work.
+ */
+struct net_config  {
+char valid[32];            /* eeprom version validation string */
+char wlan_ssid[64];        /* wifi ssid */
+char wlan_pass[64];        /* wifi password */
+char mqtt_server[64];      /* ip address of the mqtt data broker */
+char mqtt_server_port[16]; /* ip port of mqtt data broker */
+char mqtt_location[64];    /* geographical location of the sensor device */
+char tz_offset_gmt[8];     /* sample time offset from GMT (+/-) in seconds (e.g. -21600 = CST) */
+char temp_offset[8];       /* added (subtracted if -) to HTU21DF_P based temp */
+char hum_offset[8];        /* added (subtracted if -) to HTU21DF_P based humidity */
+char acs758_offset[8];     /* value in mV at 0 amps for ACS758 */
+};
+
+struct net_config mon_config;
+
+/*
+ * this section deals with getting the user input to
+ * potentially change the eeprom parameter values
+ * (e.g. change the WIFI credentials)
+ * NOTE: cannot be merged with the net_config structure because
+ * the structure determines the contents of the eeprom data.
+ */
+struct eeprom_in  {
+  char prompt[64];  /* user visible prompt */
+  char label[32];   /* label when echoing contents of eeprom */
+  char *value;      /* pointer to the data in net_config (mon_config) */
+};
+
+#define EEPROM_ITEMS 10
+struct eeprom_in eeprom_input[EEPROM_ITEMS] {
+  {"",                                       "Validation",    (char*)0},
+  {"Enter WIFI SSID",                        "WIFI SSID",     (char*)0},
+  {"Enter WIFI Password",                    "WIFI Password", (char*)0},
+  {"Enter mqtt server IP address (x.x.x.x)", "mqtt server",   (char*)0},
+  {"Enter mqtt server port",                 "mqtt port",     (char*)0},
+  {"Enter location",                         "location",      (char*)0},
+  {"Enter GMT offset (+/- secs)",            "GMT offset",    (char*)0},
+  {"Enter cal data: Temp Offset (+/- degC)", "Temp Offset",   (char*)0},
+  {"Enter cal data: Humidity Offset (+/-%)", "Hum Offset",    (char*)0},
+  {"Enter cal data: ACS758 Offset (mV@0A)",  "ACS758 Offset", (char*)0},
+
+};
+
+void init_eeprom_input()  {
+    eeprom_input[0].value = mon_config.valid;
+    eeprom_input[1].value = mon_config.wlan_ssid;
+    eeprom_input[2].value = mon_config.wlan_pass;
+    eeprom_input[3].value = mon_config.mqtt_server;
+    eeprom_input[4].value = mon_config.mqtt_server_port;
+    eeprom_input[5].value = mon_config.mqtt_location;
+    eeprom_input[6].value = mon_config.tz_offset_gmt;
+    eeprom_input[7].value = mon_config.temp_offset;
+    eeprom_input[8].value = mon_config.hum_offset;
+    eeprom_input[9].value = mon_config.acs758_offset;
+}
+
+/*
+ * prompt for and set one input in eeprom_input[].value.
+ * return: that which comes back from l_read_string()
+ */
+int getone_eeprom_input(int i)  {
+  char inbuf[64];
+  int  insize;
+
+  /*
+   * if there is no prompt associated with the subject
+   * parameter, skip it
+   */
+  if(eeprom_input[i].prompt[0] != '\0')  {
+    Serial.print(eeprom_input[i].prompt);
+    Serial.print("[");
+    Serial.print(eeprom_input[i].value);
+    Serial.print("]: ");
+    if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)
+      strcpy(eeprom_input[i].value, inbuf);
+    Serial.println();
+  }
+  return(insize);
+}
+
+void getall_eeprom_inputs()  {
+  int i;
+  int ret;
+  
+  Serial.println();    
+  Serial.println("Press <enter> alone to accept previous EEPROM value shown");
+  Serial.println("Press <esc> as the first character to skip to the end");
+
+  /*
+   * loop through getting all of the EEPROM parameter user inputs.
+   * if <esc> (indicated by -2) is pressed, skip the balance.
+   */
+  i = 0;
+  ret = 0;
+  while((i < EEPROM_ITEMS) && (ret != -2))  {
+    ret = getone_eeprom_input(i);
+    i++;
+  }
+}
+
+void dispall_eeprom_parms()  {
+  
+  Serial.println();    
+  Serial.print("Local copy of EEPROM contents(");
+  Serial.print(sizeof(mon_config));Serial.print(" of ");
+  Serial.print(EEPROM_RESERVE); Serial.println(" bytes used):");
+
+  /*
+   * loop through getting all of the EEPROM parameter user inputs.
+   * if <esc> (indicated by -2) is pressed, skip the balance.
+   */
+  for(int i = 0; i < EEPROM_ITEMS; i++)  {
+    Serial.print(eeprom_input[i].label);
+    Serial.print(" ->"); Serial.print(eeprom_input[i].value); Serial.println("<-");
+  }
+}
+
+/*
+ * read exactly the number of bytes from eeprom 
+ * that match[] is long and compare to see if the eeprom has
+ * ever been written with a valid set of data from this
+ * exact revision.
+ * 
+ * returns the value of strcmp()
+ */
+bool eeprom_validation(char match[])  {
+  int mlen;
+  char ebuf[32];
+  char in;
+  int i;
+
+  mlen = strlen(match);
+
+  for(i = 0; i < mlen; i++)
+    ebuf[i] = EEPROM.get(i, in);
+  ebuf[i] = '\0';
+  
+#ifdef FL_DEBUG_MSG
+  Serial.print("match ->");Serial.print(match); Serial.println("<-");
+  Serial.print("ebuf ->");Serial.print(ebuf); Serial.println("<-");
+#endif
+  
+  return(strcmp(match, ebuf));
+}
+
+/*
+ * OK, I just got tired of trying to figure out the available libraries.
+ * This function reads characters from the Serial port until an end-of-line
+ * of some sort is encountered.
+ * 
+ * I used minicom under ubuntu to interact with this function successfully.
+ * 
+ * buf : is a buffer to which to store the read data
+ * blen : is meant to indicate the size of buf
+ * echo : whether to echo the characters or not 
+ * 
+ * Return: (n)  the number of characters read, not counting the end of line,
+ *              which is over-written with a string terminator ('\0')
+ *         (-1) if the buffer was overflowed
+ *         (-2) if the <esc> was entered as the first character
+ * 
+ */
+int l_read_string(char *buf, int blen, bool echo)  {
+  int count = 0;
+  bool out = false;
+
+  while((out == false) && (count < blen))  {
+    if(Serial.available() > 0)  {
+      *buf = Serial.read();
+#ifdef FL_DEBUG_MSG
+      Serial.print("char=");Serial.print(*buf);Serial.println(*buf, HEX);
+#endif
+      /*
+       * echo if commanded to do so by the state of the echo argument.
+       * don't echo the <esc>.
+       */
+      if((echo == true) && (*buf != '\x1B'))
+        Serial.print(*buf);
+      switch(*buf)  {
+        /*
+         * terminate the string and get out
+         */
+        case '\n':
+          *buf = '\0';
+          out = true;
+        break;
+
+        case '\r':
+          *buf = '\0';
+          out = true;
+        break;
+
+        /*
+         * <escape> was entered
+         * ignored if not the first character
+         */
+        case '\x1B':
+          if(count == 0)  {
+            out = true;
+            count = -2;
+          }
+        break;
+
+        /* 
+         * backspace: don't increment the buffer pointer which
+         * allows this character to be written over by the next
+         */
+        case '\b':
+          if(count > 0)
+            buf--;
+            count--;
+            Serial.print(" \b");  /* blank out the character */
+          break;
+
+        /*          
+         * normal character
+         */
+        default:
+          buf++;
+          count++;
+        break;
+      }
+    }
+  }
+
+  if(out == true) /* legitimate exit */
+    return(count);
+  else if (count == blen)  /* buffer size exceeded */
+    return(-1);
+}
+
+
 /* 
  * ADS1015 12-bit (i2c) ADC
  * ------------------------
@@ -480,6 +828,37 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * 
  * A running average is produced from the last ADC_AVG SAMPLES in a rotating buffer array
  * per channel, adc[][].  Each ADC_AVG_SAMPLES an average is written to adc_ravg[].
+ * 
+ * On the -> CNC Monitoring PCB <-, the following ADC channels are allocated:
+ * (All are single ended)
+ * ADC_0 : ACS758 *or* INA169 Current Measuring
+ * ADC_1 : Thermistor #1  (see struct thermistor therms[THERM_CNT] below)
+ * ADC_2 : unallocated
+ * ADC_3 : Thermistor #2  (see struct thermistor therms[THERM_CNT] below)
+ * 
+ * On the ORIGINAL -> shop environmental remote device <-, the following channels are allocated:
+ * NOTE: 1) these channel allocations are  NOT compatible with the
+ *          hardwired connections of the CNC Monitoring PCB
+ *       2) The gain setting GAIN_TWO is compatible with both hardware sets
+ * ADC_0 : MICS5524     \
+ *         (adjustable)  -- differencial read for gas sensor (ads.readADC_Differential_0_1() )
+ * ADC_1 : Bias Voltage /   (allowing the hardware to take the difference allocates the
+ * ADC_2 : unallocated       full range of the A/D to the difference)
+ * ADC_3 : unallocated
+ * 
+ * Porting this code to the shop environmental remote device
+ * (i.e. run same software, with improvements, on CNC Monitor and shop env rem device)
+ * 
+ * I noticed in implementing the gas sensor that the bias voltage (adjustable
+ * using an on-board pot) actually was close to 0 volts.  So, the differential reading
+ * was probably a bit overkill (did it because I could sort of thing).  So I'm going
+ * to do the subtraction in software, still leaving almost all of the A/D dynamic 
+ * range for the gas sensor reading:
+ * ADC_0 : MICS5524     \
+ *                       -- raw gas reading will be just based on adc_ravg[1] - adc_ravg[0]
+ * ADC_1 : Bias Voltage /   (i.e. the running average since it changes relatively slowly)
+ * ADC_2 : unallocated
+ * ADC_3 : unallocated
  * 
  */
 #define ADC_GAIN         GAIN_TWO /* +/- 2.048 V  */
@@ -551,7 +930,18 @@ float adc_V_per_bit(adsGain_t adc_gain)  {
  *    /
  *    |
  *   GND
+ *   
+ *   To get to the calculated thermistor resistance:
+ *    therms[i].thermR = seriesR / ((adcMax/adc_ravg[therms[i].adc_ch]) - 1);
+ *    
+ *   To get from the thermistor resistance to the temp in degrees Kelvin:
+ *    therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
+ *   
+ *   Calibration coefficients:
+ *     T0_Resistance = Resistance value at calibration temp, T0
+ *     Beta = from the manufacturer for the type of thermistor used
  */
+#define THERM_CNT 2  /* number of thermistors present */
 const float adcMax = 3336.00;  /* more precise 3.3v, measured */
 const float invBeta = 1.00 / 3950.00;  /* thermistor beta parameter from the manufacturer */
 const float invT0 = 1.00 / (22.06 + 273.15);  /* 1/T0 in deg K, inverse of thermistor calibration point */
@@ -560,6 +950,11 @@ const float seriesR = 100000.00;  /* series resistor */
 
 struct thermistor  {
   int adc_ch;
+  float calBeta;
+  float invBeta;
+  float calT0;
+  float invT0;
+  float calT0R;
   float tempK;
   float tempC;
   float tempF;
@@ -567,12 +962,28 @@ struct thermistor  {
 };
 
 
-struct thermistor therms[THERMISTORS] =
+struct thermistor therms[THERM_CNT] =
 {
-  {1, 0, 0, 0, 0},
-  {3, 0, 0, 0, 0}
+  /*
+   *                                calculated values
+   *                                ------------------
+   *  adc_ch   Beta   invBeta  T0(degC) invT0     T0R    degK degC degF  R  
+   *  ------  ------  -------   ------  -----   -------  ---  ---  ---  ---
+   */
+      { 1,    3950.0,   0.0,    22.06,   0.0,  107592.0, 0.0, 0.0, 0.0, 0.0},
+      { 3,    3950.0,   0.0,    22.06,   0.0,  107592.0, 0.0, 0.0, 0.0, 0.0},
 };
 
+/*
+ * use a little storage, and precalculate some values
+ * to same time in the fast loop
+ */
+void init_therms(struct thermistor therms[])  {
+  for(int i = 0; i< THERM_CNT; i++)  {
+    therms[i].invBeta = 1.0 / therms[i].calBeta;
+    therms[i].invT0 = 1.0 / (therms[i].calT0 + 273.15);
+  }
+}
 
 /*
  * HIGH SIDE CURRENT MONITOR (INA169 based)
@@ -627,15 +1038,15 @@ float INA169_bits_to_amps(int adc_bits)  {
   return(((adc_bits * adc_V_per_bit(ADC_GAIN))/INA169_Vgain) / INA169_shunt_R);
 }
 
-#define ACS758_ADCCH 0  // adc channel for acs758 current sensor
-#define ACS758_OFFSET  (float)0.600  // V reading at 0 amps
-#define ACS758_GAIN    (float)0.060   // V/amp
+#define ACS758_ADCCH 0  /* adc channel for acs758 current sensor */
+#define ACS758_GAIN    (float)0.060   /* V/amp */
+float   acs758_offset;  /* volts, hold the converted to float cal constant to not waste time in the loop */
 
 /*
  * conversion equation for the ACS758
  */
 float ACS758_bits_to_amps(int adc_bits)  {
-  return(((adc_bits * adc_V_per_bit(ADC_GAIN))- ACS758_OFFSET)/ACS758_GAIN);
+  return(((adc_bits * adc_V_per_bit(ADC_GAIN))- acs758_offset)/ACS758_GAIN);
 }
 
 /*
@@ -692,7 +1103,23 @@ float gas_v_to_ppm(int formula, float bits)  {
   float ppm = (float)-1;
   float rs;
 
-  rs = RL * ((VS/(VPBIT * bits)) - 1);
+  /*
+   * avoid divide by zero and neg powers
+   * (should never occur in the real world or outside
+   * of testing and debug.  bits = 1 is arbitrary.)
+   */
+  if(bits <= 0)
+    bits = 1;
+
+  /*
+   * calculate the resistance of the element
+   * (the * 2 is because of the hardwired voltage divider)
+   */
+  rs = RL * ((VS/((adc_V_per_bit(ADC_GAIN) * 2) * bits)) - 1);
+#ifdef FL_DEBUG_MSG
+  Serial.print("in gas_v_to_ppm() bits = "); Serial.println(bits);
+  Serial.print("MiCS5524 GAS SENSOR rs = "); Serial.println(rs);
+#endif 
   
   switch(formula)  {
     case PASSTHRU:
@@ -730,6 +1157,15 @@ float gas_v_to_ppm(int formula, float bits)  {
  */
 bool config_sw_pressed = false;
 
+/*
+ * interrupt service routine for momentary contact switch
+ * the addition of ICACHE_RAM_ATTR was to fix the
+ * "ISR not in IRAM" crash at boot issue
+ */
+void ICACHE_RAM_ATTR mom_switch_int()  {
+    config_sw_pressed = true;
+}
+
 #define NEOPXL_COUNT  30  /* total number of neopixels in the string */
 /* NEOPXL_PIN defined above in hardware section */
 #define NEOPXL_BRT    (float)0.5 /* default neopixel brightness */
@@ -750,7 +1186,7 @@ bool config_sw_pressed = false;
 
 #ifdef NEOPIXELS
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NEOPXL_COUNT, NEOPXL_PIN, NEO_GRB + NEO_KHZ800);
-#endif // of NEOPIXELS
+
 
 /*
  * saves the neopixel mode that is sent via mqtt
@@ -909,7 +1345,7 @@ void neopxl_vu_set(int color_index)  {
   delay(NEOPXL_WAIT);
 }
 
-
+#endif // of NEOPIXELS
 
 /* 
  *  NIST NETWORK TIME
@@ -921,7 +1357,7 @@ void neopxl_vu_set(int color_index)  {
 #ifdef WIFI_ON
 // Instantiate the UDP and Network Time Protocol
 WiFiUDP ntpUDP;  
-NTPClient timeClient(ntpUDP, TZ_OFFSET);
+NTPClient timeClient(ntpUDP);
 #endif
 
 /* 
@@ -932,8 +1368,6 @@ NTPClient timeClient(ntpUDP, TZ_OFFSET);
  * about the same and 1.41 deg C  too high on average.  I don't have
  * a good way to measure humidity.
  */
-#define TEMP_OFFSET   -1.41
-#define HUM_OFFSET     0
 
 #ifdef HTU21DF_P
 // Instantiate the temp/humidity sensor
@@ -946,239 +1380,6 @@ Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
 uint8_t cncrtr_estop;
 
-
-/*
- * EEPROM
- * ------
- * this section deals with writing the persistent parameters
- * to the EEPROM and reading them on subsequent reboots
- * E.g. WIFI credentials
- */
- 
-/*
- * string to match for validation
- * this indicates the version/structure of the EEPROM too.
- * be sure to update this string if you change the 
- * net_config struct below.
- */
-#define EEPROM_VALID  "valid_v1.3.0"
- 
-/*
- * this is the size of the EERPOM segment that is accessible
- * by the EEPROM class.
- * this has to be greater than or equal to 
- * the size of the net_config struct below.
- */
- 
-#define EEPROM_RESERVE 1024
-
-/*
- * map of the parameters stored in EEPROM
- * the EEPROM class is smart enough to deal with
- * custom types, so even if things are added here,
- * the rest of the code should work.
- */
-struct net_config  {
-char valid[32];
-char wlan_ssid[64];
-char wlan_pass[64];
-char mqtt_server[64];
-char mqtt_server_port[16];
-char mqtt_location[64];
-};
-
-struct net_config mon_config;
-
-/*
- * this section deals with getting the user input to
- * potentially change the eeprom parameter values
- * (e.g. change the WIFI credentials)
- * NOTE: cannot be merged with the net_config structure because
- * the structure determines the contents of the eeprom data.
- */
-struct eeprom_in  {
-  char prompt[64];  /* user visible prompt */
-  char label[32];   /* label when echoing contents of eeprom */
-  char *value;      /* pointer to the data in net_config (mon_config) */
-};
-
-#define EEPROM_ITEMS 6
-struct eeprom_in eeprom_input[EEPROM_ITEMS] {
-  {"",                                       "Validation",    (char*)0},
-  {"Enter WIFI SSID",                        "WIFI SSID",     (char*)0},
-  {"Enter WIFI Password",                    "WIFI Password", (char*)0},
-  {"Enter mqtt server IP address (x.x.x.x)", "mqtt server",   (char*)0},
-  {"Enter mqtt server port",                 "mqtt port",     (char*)0},
-  {"Enter location",                         "location",      (char*)0},
-
-};
-
-void init_eeprom_input()  {
-    eeprom_input[0].value = mon_config.valid;
-    eeprom_input[1].value = mon_config.wlan_ssid;
-    eeprom_input[2].value = mon_config.wlan_pass;
-    eeprom_input[3].value = mon_config.mqtt_server;
-    eeprom_input[4].value = mon_config.mqtt_server_port;
-    eeprom_input[5].value = mon_config.mqtt_location;
-}
-
-/*
- * prompt for and set one input in eeprom_input[].value.
- * return: that which comes back from l_read_string()
- */
-int getone_eeprom_input(int i)  {
-  char inbuf[64];
-  int  insize;
-
-  /*
-   * if there is no prompt associated with the subject
-   * parameter, skip it
-   */
-  if(eeprom_input[i].prompt[0] != '\0')  {
-    Serial.print(eeprom_input[i].prompt);
-    Serial.print("[");
-    Serial.print(eeprom_input[i].value);
-    Serial.print("]: ");
-    if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)
-      strcpy(eeprom_input[i].value, inbuf);
-    Serial.println();
-  }
-  return(insize);
-}
-
-void getall_eeprom_inputs()  {
-  int i;
-  int ret;
-  
-  Serial.println();    
-  Serial.println("Press <enter> alone to accept previous EEPROM value shown");
-  Serial.println("Press <esc> as the first character to skip to the end");
-
-  /*
-   * loop through getting all of the EEPROM parameter user inputs.
-   * if <esc> (indicated by -2) is pressed, skip the balance.
-   */
-  i = 0;
-  ret = 0;
-  while((i < EEPROM_ITEMS) && (ret != -2))  {
-    ret = getone_eeprom_input(i);
-    i++;
-  }
-}
- 
-/*
- * read exactly the number of bytes from eeprom 
- * that match[] is long and compare to see if the eeprom has
- * ever been written with a valid set of data from this
- * exact revision.
- * 
- * returns the value of strcmp()
- */
-bool eeprom_validation(char match[])  {
-  int mlen;
-  char ebuf[32];
-  char in;
-  int i;
-
-  mlen = strlen(match);
-
-  for(i = 0; i < mlen; i++)
-    ebuf[i] = EEPROM.get(i, in);
-  ebuf[i] = '\0';
-  
-#ifdef FL_DEBUG_MSG
-  Serial.print("match ->");Serial.print(match); Serial.println("<-");
-  Serial.print("ebuf ->");Serial.print(ebuf); Serial.println("<-");
-#endif
-  
-  return(strcmp(match, ebuf));
-}
-
-/*
- * OK, I just got tired of trying to figure out the available libraries.
- * This function reads characters from the Serial port until an end-of-line
- * of some sort is encountered.
- * 
- * I used minicom under ubuntu to interact with this function successfully.
- * 
- * buf : is a buffer to which to store the read data
- * blen : is meant to indicate the size of buf
- * echo : whether to echo the characters or not 
- * 
- * Return: (n)  the number of characters read, not counting the end of line,
- *              which is over-written with a string terminator ('\0')
- *         (-1) if the buffer was overflowed
- *         (-2) if the <esc> was entered as the first character
- * 
- */
-int l_read_string(char *buf, int blen, bool echo)  {
-  int count = 0;
-  bool out = false;
-
-  while((out == false) && (count < blen))  {
-    if(Serial.available() > 0)  {
-      *buf = Serial.read();
-#ifdef FL_DEBUG_MSG
-      Serial.print("char=");Serial.print(*buf);Serial.println(*buf, HEX);
-#endif
-      /*
-       * echo if commanded to do so by the state of the echo argument.
-       * don't echo the <esc>.
-       */
-      if((echo == true) && (*buf != '\x1B'))
-        Serial.print(*buf);
-      switch(*buf)  {
-        /*
-         * terminate the string and get out
-         */
-        case '\n':
-          *buf = '\0';
-          out = true;
-        break;
-
-        case '\r':
-          *buf = '\0';
-          out = true;
-        break;
-
-        /*
-         * <escape> was entered
-         * ignored if not the first character
-         */
-        case '\x1B':
-          if(count == 0)  {
-            out = true;
-            count = -2;
-          }
-        break;
-
-        /* 
-         * backspace: don't increment the buffer pointer which
-         * allows this character to be written over by the next
-         */
-        case '\b':
-          if(count > 0)
-            buf--;
-            count--;
-            Serial.print(" \b");  /* blank out the character */
-          break;
-
-        /*          
-         * normal character
-         */
-        default:
-          buf++;
-          count++;
-        break;
-      }
-    }
-  }
-
-  if(out == true) /* legitimate exit */
-    return(count);
-  else if (count == blen)  /* buffer size exceeded */
-    return(-1);
-}
 
 /*
  * WIFI
@@ -1613,25 +1814,29 @@ void setup() {
 
 
   Serial.begin(115200);  
-
+  Serial.println("Starting ...");
+  
   /*
    * Setup the direction of the three hardwired 3.3V I/O pins (hardwired as above)
    */
   pinMode(NEOPXL_PIN, OUTPUT);
   pinMode(ESTOP_PIN, INPUT);
+
+  
   pinMode(MOM_SWITCH, INPUT);
+  attachInterrupt(digitalPinToInterrupt(MOM_SWITCH), mom_switch_int, FALLING);
   config_sw_pressed = false;
+
   
   pinMode(ACQ_ACTIVE, OUTPUT);  /* for monitoring acq timing via scope */
   digitalWrite(ACQ_ACTIVE,false);
+  
   EEPROM.begin(EEPROM_RESERVE);
   
   /*
    * sync the input prompt/label array of structures with mon_config
    */
   init_eeprom_input();
-
-  Serial.println("Starting ...");
   
   Serial.println("Press any key to change settings");
 
@@ -1658,30 +1863,19 @@ void setup() {
    * present previous, valid data from EEPROM as defaults
    */
   if(out == true)  {
-
     if(eeprom_validation(EEPROM_VALID) == 0)  {
-      EEPROM.get(0, mon_config);
-      Serial.println("Previous EEPROM data:");
-      Serial.print("Validation: ");Serial.println(mon_config.valid);
-      Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
-      Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
-      Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
-      Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
-      Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+      EEPROM.get(0, mon_config);  /* if the EEPROM is valid, get the whole contents */
+      Serial.println();
+      dispall_eeprom_parms();
     }
-    Serial.println();
 
     /*
      * run the prompt/input sequenct to get the eeprom changes
      */
     getall_eeprom_inputs();
-    
-  
-    Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
-    Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
-    Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
-    Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
-    Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+
+    Serial.println();
+    dispall_eeprom_parms();
     Serial.print("Press any key to accept, or reset to correct");
   
     while(Serial.available() <= 0);
@@ -1724,19 +1918,20 @@ void setup() {
   
   if(eeprom_validation(EEPROM_VALID) == 0)  {
     EEPROM.get(0, mon_config);
-    Serial.println("EEPROM data valid ... using it:");
-    Serial.print("Validation: ");Serial.println(mon_config.valid);
-    Serial.print("WIFI SSID: ");Serial.println(mon_config.wlan_ssid);
-    Serial.print("WIFI Password: ");Serial.println(mon_config.wlan_pass);
-    Serial.print("mqtt server IP: ");Serial.println(mon_config.mqtt_server);
-    Serial.print("mqtt server port: ");Serial.println(mon_config.mqtt_server_port);
-    Serial.print("mqtt location: ");Serial.println(mon_config.mqtt_location);
+    Serial.println("EEPROM data valid ... using it");
+    dispall_eeprom_parms();
   }
   else  {
     Serial.println("EEPROM data NOT valid ... reset and try enter valid data");
     Serial.read();
   }
 
+  /*
+   * precalculate some constants for the thermistor calculation
+   * NOTE: This is expected to be after the EEPROM contents have
+   * been copied to the local structure.
+   */
+  init_therms(therms);
   
 #ifdef WIFI_ON
   /* 
@@ -1750,6 +1945,7 @@ void setup() {
 
   // Start the NTP client
   timeClient.begin();
+  timeClient.setTimeOffset(atoi(mon_config.tz_offset_gmt));
 
   // Get the first update from the NIST server
   if(timeClient.update() == true)
@@ -1768,6 +1964,7 @@ void setup() {
   if (mqtt.connected())  {
     MQTT_Subscribe();
 
+#ifdef NEOPIXELS
     /*
      * Synchronize with the data broker by publishing the local
      * values of neopixel mode and neopixel range
@@ -1815,6 +2012,7 @@ void setup() {
       Serial.println("Publish failed")
 #endif
       ;
+#endif /* NEOPIXELS */
   }
 #endif /* WIFI_ON */
 
@@ -1851,6 +2049,12 @@ void setup() {
   neopxl_color_palette_set(0, NEOPXL_BRT, 0, (NEOPXL_COUNT-1));  /* off */
 #endif
 
+  /*
+   * precalculate the ACS758 offset calibration so as not
+   * to waste time in the fast loop
+   */
+  acs758_offset = atof(mon_config.acs758_offset)/(float)1000;
+
   currentMillis = previousMillis = millis();
   
   /*
@@ -1885,11 +2089,10 @@ void loop() {
     previousMillis = millis();
 
     /*
-     * remember had to be polled (see notes above)
-     * and there's a pull-up (i.e. switch pulls it down)
+     * Reminder, the MOM_SWITCH is on an interrupt:
+     * config_sw_pressed is set by mom_switch_int()
+     * when the interrupt is triggered on pin MOM_SWITCH
      */
-    if(digitalRead(MOM_SWITCH) == 0)
-      config_sw_pressed = true;
     
     /*
      * ACQUIRE AND CONVERT ALL OF THE DATA TO PHYSICAL UNITS
@@ -1963,7 +2166,7 @@ void loop() {
      * Using the running average since temperature changes slowly
      * 
      */
-    for(i = 0; i < THERMISTORS; i++)  {
+    for(i = 0; i < THERM_CNT; i++)  {
     #ifdef FL_DEBUG_MSG
       Serial.print("Thermistor # "); Serial.print(i); Serial.println(" :");
     #endif
@@ -1971,7 +2174,8 @@ void loop() {
     #ifdef FL_DEBUG_MSG
       Serial.print("thermR: "); Serial.print(therms[i].thermR);
     #endif
-      therms[i].tempK = 1.00 / (invT0 + invBeta * (log(therms[i].thermR/T0R)));
+      therms[i].tempK = 1.00 / 
+         (therms[i].invT0 + therms[i].invBeta * (log(therms[i].thermR/therms[i].calT0R)));
     
       therms[i].tempC = therms[i].tempK - 273.15;
       therms[i].tempF = ((9.0 * therms[i].tempC) / 5.00) + 32.00;
@@ -2045,10 +2249,12 @@ void loop() {
 
   #endif
 
+#ifdef ESTOP
     /*
      * read the estop digital input
      */
     cncrtr_estop = digitalRead(ESTOP_PIN);
+#endif
 
     /*
      * how much time used in theloop
@@ -2095,13 +2301,18 @@ void loop() {
     }
 
     /*
-     * if the momentary contact switch was pressed (during the fast loop)
+     * if the momentary contact switch was pressed (caught by the ISR)
      * increment to the next neopixel mode.  Roll back to start if max'ed.
-     * Note: if you archange the mode from nodered and you
+     * Note: if you change the mode from nodered and you
      *       press the momentary contact switch to change the mode
      *       in the same 3 second window,
      *       the mode will be first set to the new mqtt mode (just above)
      *       and then incremented.
+     * 
+     * Reminder, the MOM_SWITCH is on an interrupt:
+     * config_sw_pressed is set by mom_switch_int()
+     * when the interrupt is triggered on pin MOM_SWITCH
+     *
      */
     if(config_sw_pressed == true)  {
       config_sw_pressed = false;
@@ -2192,10 +2403,20 @@ void loop() {
      * read in the slow loop
      */
   #ifdef HTU21DF_P
-    temp = htu.readTemperature() + TEMP_OFFSET;
-    humidity = htu.readHumidity() + HUM_OFFSET;
+    temp = htu.readTemperature() + atof(mon_config.temp_offset);
+    humidity = htu.readHumidity() + atof(mon_config.hum_offset);
   #endif
     
+  #ifdef MICS5524_P
+
+  #ifdef FL_DEBUG_MSG
+    Serial.print("Just before gas calc adc_ravg[0] = "); Serial.println(adc_ravg[0]);
+    Serial.print("Just before gas calc adc_ravg[1] = "); Serial.println(adc_ravg[1]);
+  #endif
+  
+    gas = adc_ravg[0] - adc_ravg[1];
+  #endif
+
     /*
      * END OF ACQUISITION
      */
@@ -2323,7 +2544,7 @@ void loop() {
       /*
        * send the raw gas sensor data
        */
-      enviro = json_sample("gasrw", gas, mon_config.location, timestamp);
+      enviro = json_sample("gasrw", gas, mon_config.mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending enviro-gasrw data: ");
     #endif
@@ -2376,7 +2597,8 @@ void loop() {
       #endif
         ;
   #endif
-     
+
+  #ifdef ESTOP
       /*
        * send the estop pin status
        */
@@ -2394,6 +2616,8 @@ void loop() {
         Serial.println("Publish failed")
       #endif
         ;
+  #endif
+  
     } /* end of mqtt connect check */
     
     /*
