@@ -128,6 +128,10 @@
  * o for fun, add a neopixel chase mode to show off
  * o include the topics in the thermistor structure
  * o connect the thermistor structure to the EEPROM values
+ * o finish ACS758_set_offset()
+ * 
+ * v1.5
+ * + declaring v1.4 complete
  * 
  * v1.4 (in mostly chronological order):
  * + solved the issue with local/node-red neopixel mode sync (chg in nodered flow)
@@ -526,9 +530,10 @@ int mqtt_fails = RST_ON_MQTT_COUNT;
 
 /*
  * set up the structure and callback() for the slower loop functionality
+ * add the volatile qualifier to insure RAM location and safe access
  */
 os_timer_t sampleTimer; /* for the slower sample loop */
-bool sampleTimerOccured;
+volatile bool sampleTimerOccured;
 void sampleTimerCallback(void *pArg)  {
   sampleTimerOccured = true;
 }
@@ -537,7 +542,7 @@ void sampleTimerCallback(void *pArg)  {
  * faster loop
  */
 os_timer_t acqTimer;
-bool acqTimerOccured;
+volatile bool acqTimerOccured;
 void acqTimerCallback(void *pArg)  {
   acqTimerOccured = true;
 }
@@ -1154,8 +1159,11 @@ float gas_v_to_ppm(int formula, float bits)  {
  * config_sw_pressed stays "true" until someone uses it.
  * (Note: at this writing, input 16 is used for this input.
  *  It cannot be attached to an interrupt.  So it is polled.)
+ *  
+ *  use volatile qualifier to insure RAM location and safe access
  */
-bool config_sw_pressed = false;
+volatile bool config_sw_pressed = false;
+
 
 /*
  * interrupt service routine for momentary contact switch
@@ -1163,7 +1171,7 @@ bool config_sw_pressed = false;
  * "ISR not in IRAM" crash at boot issue
  */
 void ICACHE_RAM_ATTR mom_switch_int()  {
-    config_sw_pressed = true;
+  config_sw_pressed = true;
 }
 
 #define NEOPXL_COUNT  30  /* total number of neopixels in the string */
