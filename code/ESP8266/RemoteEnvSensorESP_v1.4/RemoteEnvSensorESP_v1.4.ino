@@ -250,18 +250,19 @@
  * ************** PICK WHICH SENSING HARDWARE ***************************
  * 
  * pick for which hardware this software is being built.
- * AT THIS WRITING, THERE ARE NO HARDWARE CONFLICTS ...
- *   so no conditional config on hardware pins
+ * AT THIS WRITING, THERE ARE NO MAJOR HARDWARE CONFLICTS ...
+ *   ... see the conditional setting of the WIFI LED ... oops
  * (CHOOSE ONLY ONE OPTION by putting "//" before the other one)
  */
-//#define CNC_REM
-#define ENV_REM
+#define CNC_REM
+//#define ENV_REM
 
 
 /********************* HARDWARE Connections ********************/
 /*
  *
  * Note : currently no conflicts between the env sensor and the CNC version
+ *        (except the WiFi LED)
  * Input pull-ups reported to be 30-100K
  * 
  * NOTES: 1) There is conflicting information about which pins have which pullups.
@@ -275,10 +276,10 @@
  *        4) I don't know what's going on with Pin 16.
  */
 //#define UNUSED       0  /* built in LED on Huzzah */
-#define   ACQ_ACTIVE   2  /* sampling loop for scope monitoring (also blue on-board LED) */
+#define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
 //#define I2C_SDA      4  /* defined elsewhere */
 //#define I2C_SCL      5  /* defined elsewhere */
-#define   WIFI_LED    12  /* output pin to indicate WIFI connect status */
+//#define   WIFI_LED   12 /* oops ... see below ... led connected to diff pins */
 #define   ESTOP_PIN   13  /* input to provide the status of the router estop */
 //#define   INPUT_14    14  /* hardwired as an optically isolated input */
 #define   NEOPXL_PIN  15  /* output pin for neopixel data (built-in 30-100K pull-down)*/
@@ -286,6 +287,8 @@
 
 /* 
  *  which hardware is actually connected?
+ *  (divided into two configurations ENV_REM and CNC_REM ... selected above)
+ *  
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
  *  I used 1's and 0's since I needed some #if's in the code below.
@@ -311,7 +314,10 @@
 //#define NEOPIXELS    1  // neopixels are present
 //#define ESTOP        1  // is there an estop status wire connected
 
+#define WIFI_LED     13 /* output pin to indicate WIFI connect status */
+
 #endif
+
 
 #ifdef CNC_REM
 
@@ -324,6 +330,8 @@
 #define ACS758       1  // Hall Effect current sensor present
 #define NEOPIXELS    1  // neopixels are present
 #define ESTOP        1  // is there an estop status wire connected
+
+#define WIFI_LED     12  /* output pin to indicate WIFI connect status */
 
 #endif
 
