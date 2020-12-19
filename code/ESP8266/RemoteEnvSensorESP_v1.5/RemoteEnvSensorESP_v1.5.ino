@@ -43,12 +43,13 @@
  * 
  * Hardware:
  * Adafruit Huzzah ESP8266 module (for development; ESP-12S (AF P2491) target)
- * Adafruit HTU21D Temp/Humidity i2c module
+ * Adafruit HTU21D Temp/Humidity i2c module - The HTU21D-F has a default I2C address of 0x40 and cannot be changed!
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
  * The below current sensors output analog voltages and interface through the ADS1015:
  *   Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
  *   Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
+ * Adafruit BME680 (P3660) Temp, Humidity, Pressure, VOC - By default, the i2c address is 0x77
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -70,20 +71,23 @@
  * 
  * Top: This comment section
  * Support functions and #defines:
- *   HARDWARE   (pins and what modules are present)
- *   EEPROM     (for storing persistent data like WIFI credentials)
- *   WIFI       (ssid/password)
- *   MQTT       (topics and mosquito location)
- *   BEHAVIORAL (timing, retrys, etc )
- *   ADS1015    (adc setup, etc.)
- *   THERMISTOR (formulas, etc.)
- *   INA169     (high side current monitor formulas, etc.)
- *   ACS758     (hall effect current sensor; mutually exclusive to INA169 (i.e. pick one)
- *   MiCS5524   (gas sensor formulas, etc.)
- *   NEOPIXELS  (neopixel characteristics, display modes, etc.)
- *   NIST       (network time functions)
- *   HTU21D     (temp and humidity sensor formulas, etc.)
- *   MQTT       (mosquito dialog and json processing)
+ *   HARDWARE    (pins and what modules are present)
+ *   EEPROM      (for storing persistent data like WIFI credentials)
+ *   WIFI        (ssid/password)
+ *   MQTT        (topics and mosquito location)
+ *   BEHAVIORAL  (timing, retrys, etc )
+ *   ADS1015     (adc setup, etc.)
+ *   THERMISTOR  (formulas, etc.)
+ *   INA169      (high side current monitor formulas, etc.)
+ *   ACS758      (hall effect current sensor; mutually exclusive to INA169 (i.e. pick one)
+ *   MiCS5524    (gas sensor formulas, etc.)
+ *   NEOPIXELS   (neopixel characteristics, display modes, etc.)
+ *   NIST        (network time functions)
+ *   HTU21D      (temp and humidity sensor formulas, etc.)
+ *   MQTT        (mosquito dialog and json processing)
+ *   LOCAL_SSR   (solid state relay control)
+ *   GDOOR_SENSE (garage door sense switch)
+ *   BME680      (temp, humidity, pressure, VOC)
  * 
  * SETUP:
  *   Allow for editing of the EEPROM parameters
@@ -107,6 +111,7 @@
  *     adjust the neopixel display mode and gain from mqtt values
  *     Status the WIFI and mqtt, retry connect if necessary
  *     read the temp/humidity from the HTU21D (slower changing parameters)
+ *     read the temp/hum/etc. from the BME680
  *     publish all of the environmental data via mqtt
  *     
  *******************************************************************************************************
@@ -132,6 +137,15 @@
  * 
  * v1.5
  * + declaring v1.4 complete
+ * + added int parm_to_value(char *topic, bool *num_value) for SSR topic
+ * + added #define GARAGE_REM for the new hardware configuration
+ * + added handling for input of a DOOR status
+ * + added management of gpio pins via #define's and data structure
+ * + added SSR control via subscribe to mqtt topic (typically set by nodered)
+ * + added BME680 support for temp, hum, pressure, VOC
+ * + added topic and sending of WIFI RSSI
+ * NOTE: not yet tested for the ENV_REM and CNC_REM configurations
+ *       (compiles ok at this writing)
  * 
  * v1.4 (in mostly chronological order):
  * + solved the issue with local/node-red neopixel mode sync (chg in nodered flow)
@@ -245,25 +259,40 @@
 #include <user_interface.h>  /* for os timer functionality */
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
+#include "Adafruit_BME680.h"
 
 /*
  * ************** PICK WHICH SENSING HARDWARE ***************************
  * 
- * pick for which hardware this software is being built.
- * AT THIS WRITING, THERE ARE NO MAJOR HARDWARE CONFLICTS ...
- *   ... see the conditional setting of the WIFI LED ... oops
+ * pick for which hardware this software is being built
+ * 
  * (CHOOSE ONLY ONE OPTION by putting "//" before the other one)
+ * 
+ * This also determines: 
+ *  -> the set of MQTT topics to send
+ *  -> the gpio pin use and direction
+ *  -> which i2c-based modules are present
+ *  
+ *  NOTE: there are conflicts between the configurations.
+ *  
+ *  NOTE: many of the variables associated with the various devices are
+ *        not conditionally declared (i.e. declared whether the device is present
+ *        or not.  You could save some memory space by hiding them behind
+ *        the #defines.
+ * 
  */
-#define CNC_REM
+//#define CNC_REM
 //#define ENV_REM
+#define GARAGE_REM
 
 
 /********************* HARDWARE Connections ********************/
 /*
  *
- * Note : currently no conflicts between the env sensor and the CNC version
- *        (except the WiFi LED)
  * Input pull-ups reported to be 30-100K
+ * NOTE: these #defines are for referencing pins.  You must insure that
+ * the way you intend to use the referenced pins in your code matches the
+ * initialization structure below.
  * 
  * NOTES: 1) There is conflicting information about which pins have which pullups.
  *           Some sources say that Pin 16 has a build in pull-down.
@@ -275,19 +304,114 @@
  *        3) Conclusion, generally manage your own pull-ups externally.
  *        4) I don't know what's going on with Pin 16.
  */
+
+
+/*
+ * define what is to be done for initialization of the pins
+ * 
+ * NOTE: you have to manage how these pins are accessed.
+ * i.e. there is no error checking if you code a read on a write pin.
+ * You also have to make sure that there are no conflicts between 
+ * what's defined here and the hardware modules that are included above.
+ */
+struct pin_init {
+  int  pin;      /* pin number */
+  char *label;  /* human readable meaningful label for the pin */
+  int  pin_mode; /*INPUT, OUTPUT, or INPUT_PULLUP */
+  bool action;  /* true: do initialization; false: do nothing for this pin */
+};
+
+#ifdef CNC_REM
+
 //#define UNUSED       0  /* built in LED on Huzzah */
-#define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
+#define   ACQ_ACTIVE   2  /* sampling loop for scope monitoring (also blue on-board LED) */
 //#define I2C_SDA      4  /* defined elsewhere */
 //#define I2C_SCL      5  /* defined elsewhere */
-//#define   WIFI_LED   12 /* oops ... see below ... led connected to diff pins */
+#define   WIFI_LED    12 /* oops ... see below ... led connected to diff pins */
 #define   ESTOP_PIN   13  /* input to provide the status of the router estop */
-//#define   INPUT_14    14  /* hardwired as an optically isolated input */
+#define   MOM_SWITCH  14  /* momentary switch input for various uses */
 #define   NEOPXL_PIN  15  /* output pin for neopixel data (built-in 30-100K pull-down)*/
-#define   MOM_SWITCH  14  /* momentary switch input for various uses (interrupt cannot be attch'd)  */
+
+struct pin_init local_pins[] = {
+  {0,  "BD_LED",   OUTPUT, false},
+  {2,  "SAMPLE",   OUTPUT, true},   /* also the blue onboard led */
+  {4,  "I2C_SDA",  OUTPUT, false},  /* initialized by the i2c class */
+  {5,  "I2C_SCL",  OUTPUT, false},  /* initialized by the i2c class */
+  {12, "WIFI LED", OUTPUT, true},
+  {13, "ESTOP",    INPUT,  true},
+  {14, "MOM SW",   INPUT,  true},
+  {15, "NEOPXL",   OUTPUT, true},
+  {16, "UNUSED",   OUTPUT, false},
+  {-1, "end",      INPUT,  false},  /* terminate the list */
+};
+#endif
+
+
+#ifdef ENV_REM
+
+//#define UNUSED      0  /* built in LED on Huzzah */
+#define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
+//#define I2C_SDA     4  /* defined elsewhere */
+//#define I2C_SCL     5  /* defined elsewhere */
+#define   WIFI_LED   13 /* oops ... see below ... led connected to diff pins */
+
+struct pin_init local_pins[] = {
+  {0,  "BD_LED",   OUTPUT,  false},
+  {2,  "SAMPLE",   OUTPUT, true},   /* also the blue onboard led */
+  {4,  "I2C_SDA",  OUTPUT, false},  /* initialized by the i2c class */
+  {5,  "I2C_SCL",  OUTPUT, false},  /* initialized by the i2c class */
+  {12, "UNUSED",   OUTPUT, false},
+  {13, "WIFI LED", OUTPUT, true},
+  {14, "UNUSED",   OUTPUT, false},
+  {15, "UNUSED",   OUTPUT, false},
+  {16, "UNUSED",   OUTPUT, false},
+  {-1, "end",      INPUT,  false},  /* terminate the list */
+};
+
+#endif
+
+
+#ifdef GARAGE_REM
+
+//#define UNUSED      0  /* built in LED on Huzzah */
+#define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
+//#define I2C_SDA     4  /* defined elsewhere */
+//#define I2C_SCL     5  /* defined elsewhere */
+#define   WIFI_LED    12 /* oops ... see below ... led connected to diff pins */
+#define   GDOOR_PIN   13  /* input to provide door open/closed microswitch state */
+#define   SSR_PIN     14  /* pin for locally connected Solid State Relay */
+
+struct pin_init local_pins[] = {
+  {0,  "BD_LED",   OUTPUT,       false},
+  {2,  "SAMPLE",   OUTPUT,       true},   /* also the blue onboard led */
+  {4,  "I2C_SDA",  OUTPUT,       false},  /* initialized by the i2c class */
+  {5,  "I2C_SCL",  OUTPUT,       false},  /* initialized by the i2c class */
+  {12, "WIFI LED", OUTPUT,       true},
+  {13, "GRGDOOR",  INPUT_PULLUP, true},
+  {14, "SSR",      OUTPUT,       true},
+  {15, "UNUSED",   OUTPUT,       false},
+  {16, "UNUSED",   OUTPUT,       false},
+  {-1, "end",      INPUT,        false},  /* terminate the list */
+};
+
+#endif
+
+/*
+ * initialize the gpio pins according to the structure
+ * defined above
+ */
+void init_pins()  {
+  int i = 0;
+  while(local_pins[i].pin >= 0)  {
+    if(local_pins[i].action == true)
+      pinMode(local_pins[i].pin, local_pins[i].pin_mode);
+    i++;
+  }
+}
 
 /* 
  *  which hardware is actually connected?
- *  (divided into two configurations ENV_REM and CNC_REM ... selected above)
+ *  (divided into the configurations (e.g. ENV_REM and CNC_REM) ... selected above)
  *  
  *  note: you have to manage dependencies yourself
  *        (e.g. if no adc, thermistors and current not possible)
@@ -304,34 +428,51 @@
 
 #ifdef ENV_REM
 
-#define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
-#define HTU21DF_P    1  // Is the temp/hum module present
-#define ADS1015_P    1  // Is the A/D present
-#define MICS5524_P   1  // Is the gas sensor present (requires ADS1015_P)
-//#define THERMISTORS  1  // Are we using the A/D to sense thermistors
-//#define INA169       0  // Is the current shunt present (choose one: INA169 or ACS759)
-//#define ACS758       1  // Hall Effect current sensor present
-//#define NEOPIXELS    1  // neopixels are present
-//#define ESTOP        1  // is there an estop status wire connected
-
-#define WIFI_LED     13 /* output pin to indicate WIFI connect status */
+#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+#define HTU21DF_P      1  // Is the temp/hum module present
+#define ADS1015_P      1  // Is the A/D present
+#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
+//#define THERMISTORS    1  // Are we using the A/D to sense thermistors
+//#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
+//#define ACS758         1  // Hall Effect current sensor present
+//#define NEOPIXELS      1  // neopixels are present
+//#define ESTOP          1  // is there an estop status wire connected
+//#define MOM_SWITCH_P 1
 
 #endif
 
 
 #ifdef CNC_REM
 
-#define WIFI_ON      1  // Should wifi be enabled; used for debug, not fully vetted
-//#define HTU21DF_P    1  // Is the temp/hum module present
-#define ADS1015_P    1  // Is the A/D present
-//#define MICS5524_P   1  // Is the gas sensor present (requires ADS1015_P)
-#define THERMISTORS  1  // Are we using the A/D to sense thermistors
-//#define INA169       0  // Is the current shunt present (choose one: INA169 or ACS759)
-#define ACS758       1  // Hall Effect current sensor present
-#define NEOPIXELS    1  // neopixels are present
-#define ESTOP        1  // is there an estop status wire connected
+#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+//#define HTU21DF_P      1  // Is the temp/hum module present
+#define ADS1015_P      1  // Is the A/D present
+//#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
+#define THERMISTORS    1  // Are we using the A/D to sense thermistors
+//#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
+#define ACS758         1  // Hall Effect current sensor present
+#define NEOPIXELS      1  // neopixels are present
+#define ESTOP          1  // is there an estop status wire connected
+#define MOM_SWITCH_P   1
 
-#define WIFI_LED     12  /* output pin to indicate WIFI connect status */
+#endif
+
+
+#ifdef GARAGE_REM
+
+#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+//#define HTU21DF_P      1  // Is the temp/hum module present
+//#define ADS1015_P      1  // Is the A/D present
+//#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
+//#define THERMISTORS    1  // Are we using the A/D to sense thermistors
+//#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
+//#define ACS758         1  // Hall Effect current sensor present
+//#define NEOPIXELS      1  // neopixels are present
+//#define ESTOP          1  // is there an estop status wire connected
+//#define MOM_SWITCH_P   1
+#define LOCAL_SSR      1  // solid state relay control
+#define GDOOR_SENSE    1  // garage door sense switch
+#define BME680         1  // temp, hum, pressure, voc
 
 #endif
 
@@ -343,6 +484,7 @@
 
 // This section is used for the free air sensing module
 #define TOPIC_TEST       "PamTest-esp8266"
+#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
 #define TOPIC_ENV_TEMP   "zk-env/temp"
 #define TOPIC_ENV_HUM    "zk-env/humidity"
 #define TOPIC_STIME      "zk-env/time"
@@ -367,6 +509,7 @@
 
 // This section is used for the free air sensing module
 //#define TOPIC_TEST       "PamTest-esp8266"
+//#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
 //#define TOPIC_ENV_TEMP   "zk-env/temp"
 //#define TOPIC_ENV_HUM    "zk-env/humidity"
 //#define TOPIC_STIME      "zk-env/time"
@@ -376,7 +519,8 @@
 
 
 // This section is used for the CNC Router sensing module
-#define TOPIC_TEST       "PamTest-esp8266"
+#define TOPIC_TEST        "PamTest-esp8266"
+#define TOPIC_WIFI_RSSI   "zk-cncrtr/wifi_rssi"
 #define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
 #define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
 #define TOPIC_STIME       "zk-cncrtr/time"
@@ -387,9 +531,30 @@
 
 #endif
 
-//Subscribe:
+
+#ifdef GARAGE_REM
+
+// This section is used for the zhome garage sensing module
+#define TOPIC_TEST       "PamTest-esp8266"
+#define TOPIC_WIFI_RSSI  "bt-garage/wifi_rssi"
+#define TOPIC_ENV_TEMP   "bt-garage/temp"
+#define TOPIC_ENV_HUM    "bt-garage/humidity"
+#define TOPIC_ENV_PRES   "bt-garage/pressure"
+#define TOPIC_ENV_ALT    "bt-garage/altitude"
+#define TOPIC_ENV_GASR   "bt-garage/gasohms"
+#define TOPIC_ENV_GDOOR  "bt-garage/grgdoor"
+#define TOPIC_STIME      "bt-garage/time"
+
+#endif
+
+
+/* 
+ * Potential list of topics to which to Subscribe: 
+ * (see below structure initialization for those which are used)
+ */
 #define TOPIC_NEOPXL_MODE  "zk-cncrtr/neopxl_mode"
 #define TOPIC_NEOPXL_RANGE "zk-cncrtr/neopxl_range"
+#define TOPIC_SSR_STATE    "bt-garage/ssr_state"
 
 // Special initialization topics
 // (sent once at startup to sync nodered w/ this software)
@@ -426,13 +591,31 @@ struct parameter parameters[] = {
 };
 #endif
 
+#ifdef GARAGE_REM
+struct parameter parameters[] = {
+  {TOPIC_SSR_STATE,  "", PARM_INT, false},
+  {"","",PARM_UND, false},  /* terminate the list */
+};
+#endif
+
+
 /*
  * convert the string based value from the json string
  * to the appropriate type.
  * Note: collection of three functions based on parameter type
- * returns -1: if the topic is not found
+ * returns -1: if the topic is not found or the value didn't make sense
  */
 int parm_to_value(char *topic, int *num_value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      *num_value = atoi(parameters[i].value);
+      status = 1;
+    }
+  }
+  return(status);
+}
+int parm_to_value(char *topic, uint8_t *num_value)  {
   int status = -1;
   for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
     if(strcmp(topic, parameters[i].topic) == 0)  {
@@ -462,6 +645,22 @@ int parm_to_value(char *topic, char *num_value)  {
   }
   return(status);
 }
+int parm_to_value(char *topic, bool *num_value)  {
+  int status = -1;
+  for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
+    if(strcmp(topic, parameters[i].topic) == 0)  {
+      status = 1; /* the topic was found ... so far, so good */
+      if(strcmp(parameters[i].value, "false") == 0)
+        *num_value = false;
+      else if(strcmp(parameters[i].value, "true") == 0)
+        *num_value = true;
+      else  /* bad value string */
+        status = -1;
+    }
+  }
+  return(status);
+}
+
 
 /*
  * based on the topic, set the string based value in the parameter[]
@@ -513,7 +712,7 @@ int get_parm_valid(char *topic, bool *valid)  {
 /*
  * timer intervals for the main sensing loop and publish
  */
-#define MQTT_INTERVAL     3000 // mS between publish's
+#define MQTT_INTERVAL     2000 // mS between publish's
 #define ACQ_INTERVAL      50   // A/D sampling interval (mS)
 
 #define RST_ON_WIFI_FAIL  false // If true, reset the device after RST_ON_WIFI_COUNT loops
@@ -1154,6 +1353,21 @@ float gas_v_to_ppm(int formula, float bits)  {
   return ppm;
 }
 
+
+/*
+ * BME680
+ * ------
+ * Temp, Humidity, Pressure, VOC sensor
+ */
+#ifdef BME680
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+Adafruit_BME680 bme; // I2C
+
+#endif
+
+
 /*
  *  NEOPIXELS
  *  ---------
@@ -1374,6 +1588,7 @@ void neopxl_vu_set(int color_index)  {
 // Instantiate the UDP and Network Time Protocol
 WiFiUDP ntpUDP;  
 NTPClient timeClient(ntpUDP);
+long wifi_rssi;
 #endif
 
 /* 
@@ -1389,6 +1604,22 @@ NTPClient timeClient(ntpUDP);
 // Instantiate the temp/humidity sensor
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 #endif
+
+/*
+ *  SSR
+ *  ---
+ */
+uint8_t  ssr_state = LOW;   /* the current state of the SSR: HIGH (0x01) = on, LOW (0x00) = off */
+uint8_t  nssr_state = LOW;  /* as received from mqtt */
+bool     ssr_state_valid = false; /* has a valid value been received via mqtt */
+
+/*
+ * GARAGE DOOR SENSE
+ * -----------------
+ */
+#define OPEN   1
+#define CLOSED 0
+uint8_t gdoor_state;
 
 /*
  * Other I/O
@@ -1644,6 +1875,19 @@ String json_sample(String parm, float value, String location, String tstamp)  {
 
   return(enviro);
 }
+String json_sample(String parm, long value, String location, String tstamp)  {
+  
+  String enviro;
+  
+  enviro =          "{ \"" + parm + "\":";
+  enviro = enviro +   "{ " + "\"value\": " + String(value) + ",";
+  enviro = enviro +          "\"location\": \"" + location + "\",";
+  enviro = enviro +          "\"tstamp\": \"" + tstamp + "\"";
+  enviro = enviro +   "}";
+  enviro = enviro + "}";
+
+  return(enviro);
+}
 String json_sample(String parm, String value, String location, String tstamp)  {
   
   String enviro;
@@ -1835,18 +2079,28 @@ void setup() {
   /*
    * Setup the direction of the three hardwired 3.3V I/O pins (hardwired as above)
    */
-  pinMode(NEOPXL_PIN, OUTPUT);
-  pinMode(ESTOP_PIN, INPUT);
+  init_pins();
 
-  
-  pinMode(MOM_SWITCH, INPUT);
+#ifdef MOM_SWITCH_P
+  /*
+   * do the extra setup per configuration
+   */
   attachInterrupt(digitalPinToInterrupt(MOM_SWITCH), mom_switch_int, FALLING);
+#endif
+
+  /* note: if the interrupt is not attached, as above, 
+   * the momentary switch code will remain dormant.
+   */
   config_sw_pressed = false;
 
-  
-  pinMode(ACQ_ACTIVE, OUTPUT);  /* for monitoring acq timing via scope */
+  /*
+   * do the common gpio setup extra's
+   */
   digitalWrite(ACQ_ACTIVE,false);
-  
+
+  /*
+   * initialize the eeprom functionality
+   */
   EEPROM.begin(EEPROM_RESERVE);
   
   /*
@@ -1954,7 +2208,6 @@ void setup() {
    * Setup the LED for indicating Wifi connection and
    * connect to WiFi access point.
    */
-  pinMode(WIFI_LED, OUTPUT);
   digitalWrite(WIFI_LED, HIGH);
   if(LWifiConnect(true) == WL_CONNECTED)
     digitalWrite(WIFI_LED, LOW);
@@ -2053,6 +2306,23 @@ void setup() {
       adc[i][j] = (float)0;
     }
   }
+#endif
+
+#ifdef BME680
+
+  if (bme.begin() != true) {
+    Serial.println("Could not find a valid BME680 sensor!");
+  }
+  else  {
+    // Set up oversampling and filter initialization
+    Serial.println("Setting up BME680");
+    bme.setTemperatureOversampling(BME680_OS_8X);
+    bme.setHumidityOversampling(BME680_OS_2X);
+    bme.setPressureOversampling(BME680_OS_4X);
+    bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+    bme.setGasHeater(320, 150); // 320*C for 150 ms
+  }
+  
 #endif
 
 #ifdef NEOPIXELS
@@ -2272,6 +2542,13 @@ void loop() {
     cncrtr_estop = digitalRead(ESTOP_PIN);
 #endif
 
+#ifdef GDOOR_SENSE
+    /*
+     * read the estop digital input
+     */
+    gdoor_state = digitalRead(GDOOR_PIN);
+#endif
+
     /*
      * how much time used in theloop
      */
@@ -2295,7 +2572,79 @@ void loop() {
   if(sampleTimerOccured == true)  {
 
 
-    Serial.println("Tick Occured");
+    Serial.println("Slow Tick Occured");
+    
+#ifdef WIFI_ON  
+    /*
+     * Status the WIFI and set the LED indicator accordingly.
+     * Reset the device on repeated, continuous WiFi failures
+     * (just try again if the RST_ON_WIFI_FAIL is not set)
+     */
+    if(WiFi.status() == WL_CONNECTED)  {
+      digitalWrite(WIFI_LED, LOW);
+      wifi_fails = RST_ON_WIFI_COUNT;  /* reset the fail counter */
+      wifi_rssi = WiFi.RSSI();
+      Serial.print("Wifi signal strength = ");
+      Serial.print(wifi_rssi);
+      Serial.println("dBm");
+    }
+    else {
+      digitalWrite(WIFI_LED, HIGH);  /* indicate that the wifi is down */
+      
+      /*
+       * if the reset-on-wifi-fail is enabled, 
+       * check if we'll be resetting the cpu first.
+       * (no reason to reconnect to attempt wifi connect if so)
+       */
+      if(RST_ON_WIFI_FAIL)  {
+        if(--wifi_fails > 0)
+          LWifiConnect(false);
+        else  {
+          Serial.println("Resetting in 2 seconds because of WiFi fail");
+          delay(2000);
+          ESP.restart();
+        }
+      }
+      else
+        LWifiConnect(false);
+    }
+  
+    // Service the NTP client. Updates happen much slower per defaults.
+    timeClient.update();
+    
+#endif /* of WIFI status/reset section */
+
+#ifdef LOCAL_SSR
+
+    /*
+     * has a value for the ssr been received from the 
+     * mqtt-subscribed topic ?
+     * 
+     * change the state if a new value was received
+     * (I don't know if there would be a glitch in the SSR
+     *  output if it's written every time, so only write it
+     *  if it needs to change.)
+     */
+    get_parm_valid(TOPIC_SSR_STATE, &ssr_state_valid);
+#ifdef FL_DEBUG_MSG
+    Serial.print("ssr_state_valid: "); Serial.println(ssr_state_valid);
+#endif
+    if(ssr_state_valid == true) {
+      parm_to_value(TOPIC_SSR_STATE, &nssr_state);
+#ifdef FL_DEBUG_MSG
+      Serial.print("ssr_state: "); Serial.println(ssr_state);
+      Serial.print("nssr_state: "); Serial.println(nssr_state);
+#endif
+      if(nssr_state != ssr_state)  {
+        ssr_state = nssr_state;
+        Serial.print("Setting new ssr_state to: ");Serial.println(ssr_state);
+        digitalWrite(SSR_PIN, ssr_state);
+      }
+    }
+
+    
+#endif
+
 
 #ifdef NEOPIXELS
 
@@ -2311,7 +2660,7 @@ void loop() {
       parm_to_value(TOPIC_NEOPXL_MODE, &nneopxl_mode);
       if(nneopxl_mode != neopxl_mode)  {
         neopxl_mode = nneopxl_mode;
-        Serial.print("Setting new neopxl_mode to:");Serial.println(neopxl_mode);
+        Serial.print("Setting new neopxl_mode to (from mqtt):");Serial.println(neopxl_mode);
         neopxl_color_palette_set(0, 0, 0, (NEOPXL_COUNT-1));
       }
     }
@@ -2336,10 +2685,10 @@ void loop() {
         neopxl_mode++;
       else
         neopxl_mode = NEOPXL_MODE_MIN;
-      Serial.print("Setting new neopxl_mode to (switch):");Serial.println(neopxl_mode);
+      Serial.print("Setting new neopxl_mode to (from mom_switch) : ");Serial.println(neopxl_mode);
       neopxl_color_palette_set(0, 0, 0, (NEOPXL_COUNT-1));
 
-      
+
 #ifdef WIFI_ON
       /*
        * send the new neopixel mode up to nodered,
@@ -2384,34 +2733,7 @@ void loop() {
 
 #endif  // of NEOPIXELS
 
-#ifdef WIFI_ON  
-    /*
-     * Status the WIFI and set the LED indicator accordingly.
-     * Reset the device on repeated, continuous WiFi failures
-     * (just try again if the RST_ON_WIFI_FAIL is not set)
-     */
-    if(WiFi.status() == WL_CONNECTED)  {
-      digitalWrite(WIFI_LED, LOW);
-      wifi_fails = RST_ON_WIFI_COUNT;  // reset the fail counter
-    }
-    else {
-      if(RST_ON_WIFI_FAIL)  {
-        digitalWrite(WIFI_LED, HIGH);
-        if(--wifi_fails > 0)
-          LWifiConnect(false);
-        else  {
-          Serial.println("Resetting in 2 seconds because of WiFi fail");
-          delay(2000);
-          ESP.restart();
-        }
-      }
-      else
-        LWifiConnect(false);
-    }
-  
-    // Service the NTP client. Updates happen much slower per defaults.
-    timeClient.update();
-#endif
+
 
     /*
      * read the physical sensors, if they exist
@@ -2422,7 +2744,36 @@ void loop() {
     temp = htu.readTemperature() + atof(mon_config.temp_offset);
     humidity = htu.readHumidity() + atof(mon_config.hum_offset);
   #endif
+
+  #ifdef BME680
+    if (bme.performReading() != true) {
+      Serial.println("Failed to perform reading :(");
+    }
+#ifdef FL_DEBUG_MSG
+    else  {
+      Serial.print("Temperature = ");
+      Serial.print(bme.temperature);
+      Serial.println(" *C");
     
+      Serial.print("Pressure = ");
+      Serial.print(bme.pressure / 100.0);
+      Serial.println(" hPa");
+    
+      Serial.print("Humidity = ");
+      Serial.print(bme.humidity);
+      Serial.println(" %");
+    
+      Serial.print("Gas = ");
+      Serial.print(bme.gas_resistance / 1000.0);
+      Serial.println(" KOhms");
+    
+      Serial.print("Approx. Altitude = ");
+      Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+      Serial.println(" m");
+    }
+#endif
+  #endif  /* of BME680 */
+
   #ifdef MICS5524_P
 
   #ifdef FL_DEBUG_MSG
@@ -2463,7 +2814,26 @@ void loop() {
         Serial.println("Publish failed")
       #endif
         ;
-        
+
+      /*
+       * prepare and send the WIFI RSSI (i.e. signal strength)
+       */
+      enviro = json_sample("rssi", wifi_rssi, mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending rssi: ");
+    #endif
+      if (mqtt.publish(TOPIC_WIFI_RSSI, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+       
   #ifdef HTU21DF_P
   
       enviro = json_sample("temp", temp, mon_config.mqtt_location, timestamp);
@@ -2503,6 +2873,106 @@ void loop() {
       #endif
         ;
   #endif
+  
+  #ifdef BME680
+
+      /*
+       * prep and send the temp data
+       */
+      enviro = json_sample("temp", float(bme.temperature+atof(mon_config.temp_offset)), mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending enviro-temp data: ");
+    #endif
+      
+      if (mqtt.publish(TOPIC_ENV_TEMP, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+      /*
+       * prep and send the humidity data
+       */      
+      enviro = json_sample("humidity", float(bme.humidity+atof(mon_config.hum_offset)), mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending enviro-hum data: ");
+    #endif
+      
+      if (mqtt.publish(TOPIC_ENV_HUM, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+      /*
+       * prep and send the pressure data
+       */      
+      enviro = json_sample("pressure", float(bme.pressure/100.0), mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending enviro-pressure data: ");
+    #endif
+      
+      if (mqtt.publish(TOPIC_ENV_PRES, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+      /*
+       * prep and send the calculated altitude data
+       */      
+      enviro = json_sample("altitude", float(bme.readAltitude(SEALEVELPRESSURE_HPA)), mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending enviro-altitude data: ");
+    #endif
+      
+      if (mqtt.publish(TOPIC_ENV_ALT, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+
+      /*
+       * prep and send the calculated altitude data
+       */      
+      enviro = json_sample("gasR", float(bme.gas_resistance / 1000.0), mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending enviro-gasR data: ");
+    #endif
+      
+      if (mqtt.publish(TOPIC_ENV_GASR, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+
+  #endif  /* of BME680 */
   
   #ifdef THERMISTORS
       enviro = json_sample("therm0", therms[0].tempC, mon_config.mqtt_location, timestamp);
@@ -2633,6 +3103,26 @@ void loop() {
       #endif
         ;
   #endif
+
+  #ifdef GDOOR_SENSE
+      /*
+       * send the garage door pin status
+       */
+      enviro = json_sample("gdoor_state", gdoor_state, mon_config.mqtt_location, timestamp);
+    #ifdef L_DEBUG_MSG
+      Serial.print("Sending gdoor_state data ");
+    #endif
+      if (mqtt.publish(TOPIC_ENV_GDOOR, (char*) enviro.c_str()))
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish ok")
+      #endif
+        ;
+      else
+      #ifdef L_DEBUG_MSG
+        Serial.println("Publish failed")
+      #endif
+        ;
+  #endif
   
     } /* end of mqtt connect check */
     
@@ -2661,5 +3151,5 @@ void loop() {
     sampleTimerOccured = false;
   } /* end of slow loop */
 
-  yield();
+  yield();  /* let the wifi process run */
 } /* end of loop */
