@@ -33,3 +33,9 @@ esp8266-router-monitor - This is Zach's start at doing some crazy fun things wit
 
 RemoteEnvSensorESP_v1.1 - watch for this to appear.  It is the continuation of development on the new PCB.
 
+There have been several versions since the original. See the file itself for the details on what was added/improved.  Here's the summary:
+v1.3 : Added support for the CNC Router (second data source)
+v1.4 : Updates to CNC Router functionality and Neopixel support
+v1.5: Introduced the "garage" data source (SSR support and some generalization)
+
+
