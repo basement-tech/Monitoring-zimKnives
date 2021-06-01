@@ -66,7 +66,7 @@
  * - Adafruit Neopixel library
  * - Adafruit BME680 library
  * 
- * I was building under IDE 1.6.7.  Upgraded to 1.8.15 and updated some libraries.  Still works.
+ * I was building under IDE 1.6.7.  Upgraded to 1.8.15 and updated some libraries.
  * 
  * ***************************************************************************************************
  * This file is organized according to this map (the capitalized words are found literally below):
@@ -139,6 +139,9 @@
  * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
+ * + Added debug_level to eeprom ... still in the process of implementing functionality
+ * + added check on entered string length in getone_eeprom_input() to prevent overflow
+ * o Checked that it builds under each hardware configuration with the new libs and IDE versions
  * 
  * v1.5
  * + declaring v1.4 complete
@@ -779,7 +782,7 @@ unsigned long currentMillis = 0, previousMillis = 0;
  * be sure to update this string if you change the 
  * net_config struct below.
  */
-#define EEPROM_VALID  "valid_v1.3.2"
+#define EEPROM_VALID  "valid_v1.6.1"
  
 /*
  * this is the size of the EERPOM segment that is accessible
@@ -807,6 +810,7 @@ char tz_offset_gmt[8];     /* sample time offset from GMT (+/-) in seconds (e.g.
 char temp_offset[8];       /* added (subtracted if -) to HTU21DF_P based temp */
 char hum_offset[8];        /* added (subtracted if -) to HTU21DF_P based humidity */
 char acs758_offset[8];     /* value in mV at 0 amps for ACS758 */
+char debug_level[2];       /* display messages at different levels of detail */
 };
 
 struct net_config mon_config;
@@ -824,7 +828,7 @@ struct eeprom_in  {
   char *value;      /* pointer to the data in net_config (mon_config) */
 };
 
-#define EEPROM_ITEMS 10
+#define EEPROM_ITEMS 11
 struct eeprom_in eeprom_input[EEPROM_ITEMS] {
   {"",                                       "Validation",    (char*)0},
   {"Enter WIFI SSID",                        "WIFI SSID",     (char*)0},
@@ -836,7 +840,7 @@ struct eeprom_in eeprom_input[EEPROM_ITEMS] {
   {"Enter cal data: Temp Offset (+/- degC)", "Temp Offset",   (char*)0},
   {"Enter cal data: Humidity Offset (+/-%)", "Hum Offset",    (char*)0},
   {"Enter cal data: ACS758 Offset (mV@0A)",  "ACS758 Offset", (char*)0},
-
+  {"Enter debug level (0 -> 9)",             "debug level",   (char*)0},
 };
 
 void init_eeprom_input()  {
@@ -850,6 +854,7 @@ void init_eeprom_input()  {
     eeprom_input[7].value = mon_config.temp_offset;
     eeprom_input[8].value = mon_config.hum_offset;
     eeprom_input[9].value = mon_config.acs758_offset;
+    eeprom_input[10].value = mon_config.debug_level;
 }
 
 /*
@@ -869,8 +874,10 @@ int getone_eeprom_input(int i)  {
     Serial.print("[");
     Serial.print(eeprom_input[i].value);
     Serial.print("]: ");
-    if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)
-      strcpy(eeprom_input[i].value, inbuf);
+    if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)  {
+/***      if(insize < (sizeof(eeprom_input[i].value) - 1))  ***/
+        strcpy(eeprom_input[i].value, inbuf);
+    }
     Serial.println();
   }
   return(insize);
@@ -2078,7 +2085,7 @@ void setup() {
   uint16_t mqtt_port;
 
 
-  Serial.begin(115200);  
+  Serial.begin(9600);  
   Serial.println("Starting ...");
   
   /*
@@ -2129,6 +2136,8 @@ void setup() {
     i--;
   }
   Serial.println();
+
+  out = true;
 
   /*
    * if the user entered a character and caused the above
