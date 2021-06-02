@@ -142,6 +142,7 @@
  * + Added debug_level to eeprom ... still in the process of implementing functionality
  * + added check on entered string length in getone_eeprom_input() to prevent overflow
  * o Checked that it builds under each hardware configuration with the new libs and IDE versions
+ * + Implemented buffer length checks on EEPROM input
  * 
  * v1.5
  * + declaring v1.4 complete
@@ -826,21 +827,22 @@ struct eeprom_in  {
   char prompt[64];  /* user visible prompt */
   char label[32];   /* label when echoing contents of eeprom */
   char *value;      /* pointer to the data in net_config (mon_config) */
+  int  buflen;      /* length of size in EEPROM */
 };
 
 #define EEPROM_ITEMS 11
 struct eeprom_in eeprom_input[EEPROM_ITEMS] {
-  {"",                                       "Validation",    (char*)0},
-  {"Enter WIFI SSID",                        "WIFI SSID",     (char*)0},
-  {"Enter WIFI Password",                    "WIFI Password", (char*)0},
-  {"Enter mqtt server IP address (x.x.x.x)", "mqtt server",   (char*)0},
-  {"Enter mqtt server port",                 "mqtt port",     (char*)0},
-  {"Enter location",                         "location",      (char*)0},
-  {"Enter GMT offset (+/- secs)",            "GMT offset",    (char*)0},
-  {"Enter cal data: Temp Offset (+/- degC)", "Temp Offset",   (char*)0},
-  {"Enter cal data: Humidity Offset (+/-%)", "Hum Offset",    (char*)0},
-  {"Enter cal data: ACS758 Offset (mV@0A)",  "ACS758 Offset", (char*)0},
-  {"Enter debug level (0 -> 9)",             "debug level",   (char*)0},
+  {"",                                       "Validation",    mon_config.valid,            sizeof(mon_config.valid)},
+  {"Enter WIFI SSID",                        "WIFI SSID",     mon_config.wlan_ssid,        sizeof(mon_config.wlan_ssid)},
+  {"Enter WIFI Password",                    "WIFI Password", mon_config.wlan_pass,        sizeof(mon_config.wlan_pass)},
+  {"Enter mqtt server IP address (x.x.x.x)", "mqtt server",   mon_config.mqtt_server,      sizeof(mon_config.mqtt_server)},
+  {"Enter mqtt server port",                 "mqtt port",     mon_config.mqtt_server_port, sizeof(mon_config.mqtt_server_port)},
+  {"Enter location",                         "location",      mon_config.mqtt_location,    sizeof(mon_config.mqtt_location)},
+  {"Enter GMT offset (+/- secs)",            "GMT offset",    mon_config.tz_offset_gmt,    sizeof(mon_config.tz_offset_gmt)},
+  {"Enter cal data: Temp Offset (+/- degC)", "Temp Offset",   mon_config.temp_offset,      sizeof(mon_config.temp_offset)},
+  {"Enter cal data: Humidity Offset (+/-%)", "Hum Offset",    mon_config.hum_offset,       sizeof(mon_config.hum_offset)},
+  {"Enter cal data: ACS758 Offset (mV@0A)",  "ACS758 Offset", mon_config.acs758_offset,    sizeof(mon_config.acs758_offset)},
+  {"Enter debug level (0 -> 9)",             "debug level",   mon_config.debug_level,      sizeof(mon_config.debug_level)},
 };
 
 void init_eeprom_input()  {
@@ -871,12 +873,13 @@ int getone_eeprom_input(int i)  {
    */
   if(eeprom_input[i].prompt[0] != '\0')  {
     Serial.print(eeprom_input[i].prompt);
-    Serial.print("[");
-    Serial.print(eeprom_input[i].value);
-    Serial.print("]: ");
+    Serial.print("[");Serial.print(eeprom_input[i].value);Serial.print("]");
+    Serial.print("(max ");Serial.print(eeprom_input[i].buflen - 1);Serial.print(" chars):");
     if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)  {
-/***      if(insize < (sizeof(eeprom_input[i].value) - 1))  ***/
+      if(insize < (eeprom_input[i].buflen - 1))
         strcpy(eeprom_input[i].value, inbuf);
+      else
+        Serial.println("Error: too many characters; value will be unchanged");
     }
     Serial.println();
   }
@@ -890,6 +893,7 @@ void getall_eeprom_inputs()  {
   Serial.println();    
   Serial.println("Press <enter> alone to accept previous EEPROM value shown");
   Serial.println("Press <esc> as the first character to skip to the end");
+  Serial.println();
 
   /*
    * loop through getting all of the EEPROM parameter user inputs.
@@ -2118,7 +2122,7 @@ void setup() {
   /*
    * sync the input prompt/label array of structures with mon_config
    */
-  init_eeprom_input();
+/*  init_eeprom_input(); */
   
   Serial.println("Press any key to change settings");
 
@@ -2137,7 +2141,6 @@ void setup() {
   }
   Serial.println();
 
-  out = true;
 
   /*
    * if the user entered a character and caused the above
