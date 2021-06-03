@@ -116,6 +116,28 @@
  *     read the temp/hum/etc. from the BME680
  *     publish all of the environmental data via mqtt
  *     
+ *   minicom notes:
+ *     I use minicom to interact with the board when I'm not writing
+ *     software in the Arduino IDE. I have had mixed results using the
+ *     Arduino IDE for serial port i/o.
+ *     ***IMPORTANT==> You must disable hardware flow control in minicom or you'll
+ *     pull your hair out wondering why you cant get keyboard input to be recognized.
+ *     Also, it's hiding in the ^A Z, cOnfigure Minicom ..O, Serial port setup submenu.
+ *     I used a speed of 115200 with no issue.  Use that same speed in the Serial.begin() call.
+ *     
+ *   Starting to implement local DEBUG messaging levels ... something like this:
+ *   
+ *   0 : only UI, startup and significant operational things
+ *   1 : 
+ *   2 : MQTT traffic
+ *   3 : 
+ *   4 : 
+ *   5 : Local sample data
+ *   6 : 
+ *   7 : 
+ *   8 :
+ *   9 : every level of detail; beware of wierd timing things
+ *     
  *******************************************************************************************************
  * 
  * *****************************************************************************************************
@@ -386,20 +408,20 @@ struct pin_init local_pins[] = {
 #define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
 //#define I2C_SDA     4  /* defined elsewhere */
 //#define I2C_SCL     5  /* defined elsewhere */
-#define   WIFI_LED    12 /* oops ... see below ... led connected to diff pins */
+#define   WIFI_LED    12 /* onboard LED to indicate WIFI connection */
 #define   GDOOR_PIN   13  /* input to provide door open/closed microswitch state */
 #define   SSR_PIN     14  /* pin for locally connected Solid State Relay */
 
 struct pin_init local_pins[] = {
-  {0,  "BD_LED",   OUTPUT,       false},
-  {2,  "SAMPLE",   OUTPUT,       true},   /* also the blue onboard led */
+  {0,  "BD_LED",   OUTPUT,       false},  /* also tied to FLASH push button */
+  {2,  "SAMPLE",   OUTPUT,       true},   /* also the blue onboard led and pulled up*/
   {4,  "I2C_SDA",  OUTPUT,       false},  /* initialized by the i2c class */
   {5,  "I2C_SCL",  OUTPUT,       false},  /* initialized by the i2c class */
-  {12, "WIFI LED", OUTPUT,       true},
-  {13, "GRGDOOR",  INPUT_PULLUP, true},
-  {14, "SSR",      OUTPUT,       true},
-  {15, "UNUSED",   OUTPUT,       false},
-  {16, "UNUSED",   OUTPUT,       false},
+  {12, "WIFI LED", OUTPUT,       true},   /* used by SPI if configured */
+  {13, "GRGDOOR",  INPUT,        true},   /* used by SPI if configured */
+  {14, "SSR",      OUTPUT,       false},   /* used by SPI if configured */
+  {15, "UNUSED",   OUTPUT,       false},  /* used by SPI if configured ... and pulled down */
+  {16, "UNUSED",   OUTPUT,       false},  /* high at boot deep sleep wakeup */
   {-1, "end",      INPUT,        false},  /* terminate the list */
 };
 
@@ -606,6 +628,52 @@ struct parameter parameters[] = {
   {"","",PARM_UND, false},  /* terminate the list */
 };
 #endif
+
+/*
+ * DEBUG functions
+ * ---------------
+ * initialize the local debug message level with
+ * the one set, probably from EEPROM
+ */
+int l_debug_level = 0;
+
+void l_debug_set(int level)  {
+  l_debug_level = level;
+}
+
+/*
+ * display  debug message without a newline
+ * if the level is at or above the initialized level
+ */
+void l_debug(char *msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.print(msg);
+}
+void l_debug(int msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.print(msg);
+}
+void l_debug(float msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.print(msg);
+}
+
+/*
+ * display  debug message with a newline
+ * if the level is at or above the initialized level
+ */
+void l_debugln(char *msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.println(msg);
+}
+void l_debugln(int msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.println(msg);
+}
+void l_debugln(float msg, int level)  {
+  if(level <= l_debug_level)
+    Serial.println(msg);
+}
 
 
 /*
@@ -876,10 +944,12 @@ int getone_eeprom_input(int i)  {
     Serial.print("[");Serial.print(eeprom_input[i].value);Serial.print("]");
     Serial.print("(max ");Serial.print(eeprom_input[i].buflen - 1);Serial.print(" chars):");
     if((insize = l_read_string(inbuf, sizeof(inbuf), true)) > 0)  {
-      if(insize < (eeprom_input[i].buflen - 1))
+      if(insize < (eeprom_input[i].buflen))
         strcpy(eeprom_input[i].value, inbuf);
-      else
+      else  {
+        Serial.println(); 
         Serial.println("Error: too many characters; value will be unchanged");
+      }
     }
     Serial.println();
   }
@@ -2089,7 +2159,7 @@ void setup() {
   uint16_t mqtt_port;
 
 
-  Serial.begin(9600);  
+  Serial.begin(115200);  
   Serial.println("Starting ...");
   
   /*
@@ -2213,6 +2283,14 @@ void setup() {
     Serial.read();
   }
 
+  /* 
+   * now that we know the debug level set in EEPROM,
+   * let it locally
+   */
+  Serial.println();
+  Serial.print("Setting debug level to ");Serial.println(atoi(mon_config.debug_level));
+  l_debug_set(atoi(mon_config.debug_level));
+  
   /*
    * precalculate some constants for the thermistor calculation
    * NOTE: This is expected to be after the EEPROM contents have
@@ -2561,9 +2639,10 @@ void loop() {
 
 #ifdef GDOOR_SENSE
     /*
-     * read the estop digital input
+     * read the garage door digital input
      */
     gdoor_state = digitalRead(GDOOR_PIN);
+
 #endif
 
     /*
@@ -2768,25 +2847,25 @@ void loop() {
     }
 #ifdef FL_DEBUG_MSG
     else  {
-      Serial.print("Temperature = ");
-      Serial.print(bme.temperature);
-      Serial.println(" *C");
+      l_debug("Temperature = ", 5);
+      l_debug(bme.temperature, 5);
+      l_debugln(" *C", 5);
     
-      Serial.print("Pressure = ");
-      Serial.print(bme.pressure / 100.0);
-      Serial.println(" hPa");
+      l_debug("Pressure = ", 5);
+      l_debug(bme.pressure / 100.0, 5);
+      l_debugln(" hPa", 5);
     
-      Serial.print("Humidity = ");
-      Serial.print(bme.humidity);
-      Serial.println(" %");
+      l_debug("Humidity = ", 5);
+      l_debug(bme.humidity, 5);
+      l_debugln(" %", 5);
     
-      Serial.print("Gas = ");
-      Serial.print(bme.gas_resistance / 1000.0);
-      Serial.println(" KOhms");
+      l_debug("Gas = ", 5);
+      l_debug(bme.gas_resistance / 1000.0, 5);
+      l_debugln(" KOhms", 5);
     
-      Serial.print("Approx. Altitude = ");
-      Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-      Serial.println(" m");
+      l_debug("Approx. Altitude = ", 5);
+      l_debug(bme.readAltitude(SEALEVELPRESSURE_HPA), 5);
+      l_debugln(" m", 5);
     }
 #endif
   #endif  /* of BME680 */
@@ -3126,19 +3205,17 @@ void loop() {
        * send the garage door pin status
        */
       enviro = json_sample("gdoor_state", gdoor_state, mon_config.mqtt_location, timestamp);
-    #ifdef L_DEBUG_MSG
-      Serial.print("Sending gdoor_state data ");
-    #endif
+
+      l_debug("Sending gdoor_state data ", 3);
+      l_debug("(", 5);
+      l_debug(gdoor_state, 5);
+      l_debug(") ", 5);
+
       if (mqtt.publish(TOPIC_ENV_GDOOR, (char*) enviro.c_str()))
-      #ifdef L_DEBUG_MSG
-        Serial.println("Publish ok")
-      #endif
-        ;
+
+        l_debugln("Publish ok", 3);
       else
-      #ifdef L_DEBUG_MSG
-        Serial.println("Publish failed")
-      #endif
-        ;
+        l_debugln("Publish failed", 3);
   #endif
   
     } /* end of mqtt connect check */
