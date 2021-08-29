@@ -37,5 +37,7 @@ There have been several versions since the original. See the file itself for the
 v1.3 : Added support for the CNC Router (second data source)
 v1.4 : Updates to CNC Router functionality and Neopixel support
 v1.5: Introduced the "garage" data source (SSR support and some generalization)
+(See file header for additional versions)
+v2.0: separate some of the code into libraries (see ../lib) for use on other projects
 
 

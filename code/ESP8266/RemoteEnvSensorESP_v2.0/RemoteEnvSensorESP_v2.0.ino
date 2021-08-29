@@ -1,4 +1,10 @@
-
+/**************************************
+ * WARNING : this is the beginning of a new major version
+ * where much of the generally useful code is moved to arduino libraries
+ * 
+ * AT THIS POINT, IT DOES NOT COMPILE AND RUN !!! (USE VERSION 1.6 FOR NOW)
+ * 
+ ***************************************/
 
 
 
