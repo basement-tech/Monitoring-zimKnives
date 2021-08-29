@@ -9,6 +9,8 @@
 #ifndef __BT_EEPROM_H__
 #define __BT_EEPROM_H__
 
+#include <Arduino.h>
+
 /*
  * this is the size of the EERPOM segment that is accessible
  * by the EEPROM class.

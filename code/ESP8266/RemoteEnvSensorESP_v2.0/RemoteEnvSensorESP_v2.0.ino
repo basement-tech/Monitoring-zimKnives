@@ -526,7 +526,6 @@ void init_pins()  {
 #ifdef ENV_REM
 
 // This section is used for the free air sensing module
-#define TOPIC_TEST       "PamTest-esp8266"
 #define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
 #define TOPIC_ENV_TEMP   "zk-env/temp"
 #define TOPIC_ENV_HUM    "zk-env/humidity"
@@ -537,7 +536,6 @@ void init_pins()  {
 
 
 // This section is used for the CNC Router sensing module
-//#define TOPIC_TEST       "PamTest-esp8266"
 //#define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
 //#define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
 //#define TOPIC_STIME       "zk-cncrtr/time"
@@ -551,7 +549,6 @@ void init_pins()  {
 #ifdef CNC_REM
 
 // This section is used for the free air sensing module
-//#define TOPIC_TEST       "PamTest-esp8266"
 //#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
 //#define TOPIC_ENV_TEMP   "zk-env/temp"
 //#define TOPIC_ENV_HUM    "zk-env/humidity"
@@ -562,7 +559,6 @@ void init_pins()  {
 
 
 // This section is used for the CNC Router sensing module
-#define TOPIC_TEST        "PamTest-esp8266"
 #define TOPIC_WIFI_RSSI   "zk-cncrtr/wifi_rssi"
 #define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
 #define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
@@ -578,7 +574,6 @@ void init_pins()  {
 #ifdef GARAGE_REM
 
 // This section is used for the zhome garage sensing module
-#define TOPIC_TEST       "PamTest-esp8266"
 #define TOPIC_WIFI_RSSI  "bt-garage/wifi_rssi"
 #define TOPIC_ENV_TEMP   "bt-garage/temp"
 #define TOPIC_ENV_HUM    "bt-garage/humidity"
@@ -1594,7 +1589,7 @@ void setup() {
 //  mqtt.setClient(WiFiclient);
   
   // Setup the MQTT connection and attempt an initial publish
-  LMQTTConnect(true);
+  LMQTTConnect(true, pmon_config->mqtt_server);
 
   // subscribe to the topics specified above
   if (mqtt.connected())  {
@@ -2498,7 +2493,7 @@ void loop() {
     else {
       if(RST_ON_MQTT_FAIL)  {
         if(--mqtt_fails > 0)
-          LMQTTConnect(false);
+          LMQTTConnect(false, pmon_config->mqtt_server);
         else  {
           Serial.println("Resetting in 2 seconds because of MQTT fail");
           delay(2000);
@@ -2506,7 +2501,7 @@ void loop() {
         }
       }
       else
-        LMQTTConnect(false);
+        LMQTTConnect(false, pmon_config->mqtt_server);
     }
 
 

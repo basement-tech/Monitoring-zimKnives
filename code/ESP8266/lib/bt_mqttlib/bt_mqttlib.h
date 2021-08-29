@@ -10,6 +10,8 @@
 #include <PubSubClient.h>
 #include <bt_eepromlib.h>
 
+#define TOPIC_TEST "PamTest-esp8266"
+
 /*
  * list of topics to which to subscribe
  */
@@ -42,7 +44,7 @@ extern class PubSubClient mqtt;
 void callback(char* topic, byte* payload, unsigned int length);
 String macToStr(const uint8_t* mac);
 bool MQTT_Subscribe();
-bool LMQTTConnect(bool first);
+bool LMQTTConnect(bool first, char *mqtt_server);
 String json_sample(String parm, float value, String location, String tstamp);
 String json_sample(String parm, long value, String location, String tstamp);
 String json_sample(String parm, String value, String location, String tstamp);

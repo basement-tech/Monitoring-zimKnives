@@ -216,7 +216,7 @@ bool MQTT_Subscribe()  {
 /*
  * Connect or re-connect to the mqtt data broker
  */
-bool LMQTTConnect(bool first)  {
+bool LMQTTConnect(bool first, char *mqtt_server)  {
 
   bool status = false;
 
@@ -233,7 +233,7 @@ bool LMQTTConnect(bool first)  {
     Serial.print("Attempting connection to MQTT ");
   else
     Serial.print("Attempting re-connection to MQTT ");
-  Serial.print(mon_config.mqtt_server);
+  Serial.print(mqtt_server);
   Serial.print(" as ");
   Serial.println(clientName);
 
