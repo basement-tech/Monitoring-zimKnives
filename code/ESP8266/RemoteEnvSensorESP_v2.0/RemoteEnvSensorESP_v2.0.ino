@@ -169,6 +169,9 @@
  * o connect the thermistor structure to the EEPROM values
  * o finish ACS758_set_offset()
  * 
+ * v2.0
+ * 
+ * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
  * + Added debug_level to eeprom ... still in the process of implementing functionality
@@ -326,8 +329,8 @@
  */
 //#define CNC_REM
 //#define ENV_REM
-#define GARAGE_REM
-
+//#define GARAGE_REM
+#define TEST_REM
 
 /********************* HARDWARE Connections ********************/
 /*
@@ -363,6 +366,30 @@ struct pin_init {
   int  pin_mode; /*INPUT, OUTPUT, or INPUT_PULLUP */
   bool action;  /* true: do initialization; false: do nothing for this pin */
 };
+
+
+#ifdef TEST_REM
+
+//#define UNUSED      0  /* built in LED on Huzzah */
+#define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
+//#define I2C_SDA     4  /* defined elsewhere */
+//#define I2C_SCL     5  /* defined elsewhere */
+#define   WIFI_LED   13 /* oops ... see below ... led connected to diff pins */
+
+struct pin_init local_pins[] = {
+  {0,  "BD_LED",   OUTPUT,  false},
+  {2,  "SAMPLE",   OUTPUT, true},   /* also the blue onboard led */
+  {4,  "I2C_SDA",  OUTPUT, false},  /* initialized by the i2c class */
+  {5,  "I2C_SCL",  OUTPUT, false},  /* initialized by the i2c class */
+  {12, "UNUSED",   OUTPUT, false},
+  {13, "WIFI_LED", OUTPUT, true},
+  {14, "UNUSED",   OUTPUT, false},
+  {15, "UNUSED",   OUTPUT, false},
+  {16, "UNUSED",   OUTPUT, false},
+  {-1, "end",      INPUT,  false},  /* terminate the list */
+};
+
+#endif
 
 #ifdef CNC_REM
 
@@ -468,6 +495,20 @@ void init_pins()  {
  *  
  */
 
+#ifdef TEST_REM
+
+#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+#define HTU21DF_P      1  // Is the temp/hum module present
+//#define ADS1015_P      1  // Is the A/D present
+//#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
+//#define THERMISTORS    1  // Are we using the A/D to sense thermistors
+//#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
+//#define ACS758         1  // Hall Effect current sensor present
+//#define NEOPIXELS      1  // neopixels are present
+//#define ESTOP          1  // is there an estop status wire connected
+//#define MOM_SWITCH_P 1
+
+#endif
 
 #ifdef ENV_REM
 
@@ -522,6 +563,30 @@ void init_pins()  {
 /********************* MQTT Payload Information ***************/
 
 //Publish:
+
+#ifdef TEST_REM
+
+// This section is used for the free air sensing module
+#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
+#define TOPIC_ENV_TEMP   "zk-env/temp"
+#define TOPIC_ENV_HUM    "zk-env/humidity"
+#define TOPIC_STIME      "zk-env/time"
+#define TOPIC_ENV_GASCO  "zk-env/gasco"
+#define TOPIC_ENV_GASPR  "zk-env/gaspr"
+#define TOPIC_ENV_GASRW  "zk-env/gasrw"
+
+
+// This section is used for the CNC Router sensing module
+//#define TOPIC_ENV_TEMP    "zk-cncrtr/temp"
+//#define TOPIC_ENV_HUM     "zk-cncrtr/humidity"
+//#define TOPIC_STIME       "zk-cncrtr/time"
+#define TOPIC_ENV_THERM0  "zk-cncrtr/therm0"
+#define TOPIC_ENV_THERM1  "zk-cncrtr/therm1"
+#define TOPIC_ENV_AAMPS   "zk-cncrtr/aamps"
+#define TOPIC_ENV_ESTOP   "zk-cncrtr/estop"
+
+#endif
+
 
 #ifdef ENV_REM
 
@@ -604,6 +669,12 @@ void init_pins()  {
 struct parameter parameters[] = {
   {TOPIC_NEOPXL_MODE,  "", PARM_INT, false},
   {TOPIC_NEOPXL_RANGE, "", PARM_INT, false},
+  {"","",PARM_UND, false},  /* terminate the list */
+};
+#endif
+
+#ifdef TEST_REM
+struct parameter parameters[] = {
   {"","",PARM_UND, false},  /* terminate the list */
 };
 #endif
