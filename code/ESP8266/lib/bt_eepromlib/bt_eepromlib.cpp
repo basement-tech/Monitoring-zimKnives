@@ -4,6 +4,22 @@
  * this section deals with writing the persistent parameters
  * to the EEPROM and reading them on subsequent reboots
  * E.g. WIFI credentials
+ *
+ * mon_config[] holds the working copies of the eeprom contents.
+ * values are maintained in both mon_config[] and the eeprom as 
+ * character strings.  They are expected to be converted on use
+ * by the code using them based upon local context.
+ *
+ * struct eeprom_in eeprom_inputs[] provides the list of values that
+ * the user is prompted for, using get_all_eeprom_inputs().  It also provides
+ * the strings necessary to create individual prompt messages.
+ *
+ * a version validation string is kept in EEPROM_VALID in sketch main file.
+ * management of that string is currently done by main code.  Perhaps it should be moved.
+ *
+ * eeprom_begin() is expected to be called in setup().
+ * eeprom_get() copies the contents of the eeprom to mon_config.
+ * eeprom_put() writes the contents of the eeprom with mon_config.
  */
  
 #include <EEPROM.h>
@@ -19,7 +35,7 @@ struct net_config mon_config;
  * potentially change the eeprom parameter values
  * (e.g. change the WIFI credentials)
  * NOTE: cannot be merged with the net_config structure because
- * the structure determines the contents of the eeprom data.
+ * the structure determines the byte-for-byte contents of the eeprom data.
  */
 struct eeprom_in  {
   char prompt[64];  /* user visible prompt */
