@@ -1,6 +1,34 @@
 /*
  * bt_mqttlib.c
  * a wrapper for pubsub and a simple json parser
+ *
+ * bt_mqttlib was originally written to implement a monitoring application 
+ * where physical sensor values are json encoded and sent to a mosquitto 
+ * data broker to eventually be displayed using nodered.  Other topics are 
+ * subscribed to for control.
+ *
+ * LMQTTConnect() is called in the sketches setup() portion to establish the connection
+ * to the data broker.  The argument first is set to true on the first callin setup().
+ * After that the function is expected to be called in several second intervals with the
+ * argument first set to false to check the connection status and attempt reconnects if
+ * necessary.
+ *
+ * "subscribed" (i.e. data flows from the data broker to this lib) parameter management:
+ * The main application is expected to fill up the struct parameter[] with a list 
+ * of topics to which to subscribe.  The callback() function copies json decoded,
+ * using simple_json_parser(), character string values to the parameter[].value string.
+ * parm_to_value() is an overloaded (based on parameter.parm_type), set of functions
+ * for getting values from the parameters[] structure referenced by topic.
+ * The array of structures is terminated by a final entry with the parm_type set to PARM_UND.
+ * MQTT_Subscribe() must be called in the setup() portion of the sketch.
+ *
+ * "published" topics are created on the broker when the first instance of the value is sent.
+ * The overloaded json_sample() creates json encoded strings, using brute force string 
+ * concatination, to be sent to the broker in the loop() part of the broker.  There is no
+ * function provided to send them in mass since different intervals and timings may be desired.
+ *
+ * Note: the simple_json_parser() is super-simple.
+ *
  */
 
 #include "bt_mqttlib.h"
@@ -216,16 +244,14 @@ bool MQTT_Subscribe()  {
 /*
  * Connect or re-connect to the mqtt data broker
  */
-bool LMQTTConnect(bool first, char *mqtt_server)  {
+bool LMQTTConnect(bool first, char *mqtt_server, char *nodeid)  {
 
   bool status = false;
 
   // Generate client name based on MAC address and last 8 bits of microsecond counter
   String clientName;
   clientName += "esp8266-";
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  clientName += macToStr(mac);
+  clientName += nodeid;
   clientName += "-";
   clientName += String(micros() & 0xff, 16);
 

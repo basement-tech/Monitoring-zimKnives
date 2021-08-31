@@ -1660,7 +1660,7 @@ void setup() {
 //  mqtt.setClient(WiFiclient);
   
   // Setup the MQTT connection and attempt an initial publish
-  LMQTTConnect(true, pmon_config->mqtt_server);
+  LMQTTConnect(true, pmon_config->mqtt_server, pmon_config->mqtt_location);
 
   // subscribe to the topics specified above
   if (mqtt.connected())  {
@@ -2564,7 +2564,7 @@ void loop() {
     else {
       if(RST_ON_MQTT_FAIL)  {
         if(--mqtt_fails > 0)
-          LMQTTConnect(false, pmon_config->mqtt_server);
+          LMQTTConnect(false, pmon_config->mqtt_server, pmon_config->mqtt_location);
         else  {
           Serial.println("Resetting in 2 seconds because of MQTT fail");
           delay(2000);
@@ -2572,7 +2572,7 @@ void loop() {
         }
       }
       else
-        LMQTTConnect(false, pmon_config->mqtt_server);
+        LMQTTConnect(false, pmon_config->mqtt_server, pmon_config->mqtt_location);
     }
 
 

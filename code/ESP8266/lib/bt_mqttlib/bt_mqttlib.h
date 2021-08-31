@@ -6,7 +6,6 @@
 #define  __BT_MQTTLIB_H__
 
 #include "Arduino.h"
-#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <bt_eepromlib.h>
 
@@ -21,6 +20,10 @@
 #define PARM_BOOL   2
 #define PARM_STRING 3
 
+/*
+ * structure to hold the topics to which to subscribe on 
+ * the mosquitto data broker
+ */
 struct parameter {
   char topic[64];  /* used as the key into this list */
   char value[64];  /* value as string */
@@ -44,7 +47,7 @@ extern class PubSubClient mqtt;
 void callback(char* topic, byte* payload, unsigned int length);
 String macToStr(const uint8_t* mac);
 bool MQTT_Subscribe();
-bool LMQTTConnect(bool first, char *mqtt_server);
+bool LMQTTConnect(bool first, char *mqtt_server, char *nodeid);
 String json_sample(String parm, float value, String location, String tstamp);
 String json_sample(String parm, long value, String location, String tstamp);
 String json_sample(String parm, String value, String location, String tstamp);
