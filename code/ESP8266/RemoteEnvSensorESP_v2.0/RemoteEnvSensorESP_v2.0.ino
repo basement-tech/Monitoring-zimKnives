@@ -2,7 +2,7 @@
  * WARNING : this is the beginning of a new major version
  * where much of the generally useful code is moved to arduino libraries
  * 
- * AT THIS POINT, IT DOES NOT COMPILE AND RUN !!! (USE VERSION 1.6 FOR NOW)
+ * AT THIS POINT, IT COMPILES AND WAS TESTED WITH A SIMPLE USECASE !!! (USE VERSION 1.6 FOR NOW)
  * 
  * UPDATE: testing with the GARAGE_REM configuration and the door sensor and SSR
  * function as expected.
@@ -29,7 +29,7 @@
  * 
  * RemoteEnvSensorESP
  * Daniel J. Zimmerman
- * 12/06/17 - 4/30/2020
+ * 12/06/17 - 9/2021
  * 
  ****************************************************************************
  * Firmware to acquire environmental parameters and send via mqtt to broker *
@@ -50,20 +50,24 @@
  * has since been expanded to monitor a CNC controller, adding additional temperature capability
  * using thermistors (for heat sinks) and electrical current measurement using a shunt embedded 
  * in the controller.  Additional data visualization has been added with the capability to drive
- * a strip of neoPixels (30 at this writing), also from Adafruit.
+ * a strip of neoPixels (30 at this writing), also from Adafruit.  Finally, control of a solid state
+ * relay using mqtt parameters was added.  This required reading (subscribing) as well as writing (publishing)
+ * data from/to the broker.
  * 
  * Extensive parameterization is provided allowing a large number of module combinations to be hosted.
+ * 
  * ****************************************************************************************************
  * 
  * Hardware:
  * Adafruit Huzzah ESP8266 module (for development; ESP-12S (AF P2491) target)
  * Adafruit HTU21D Temp/Humidity i2c module - The HTU21D-F has a default I2C address of 0x40 and cannot be changed!
  * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
- * Adafruit MiCS5524 Gas Sensor (P3199) - no longer supported; see previous version (i2c support coming)
+ * Adafruit MiCS5524 Gas Sensor (P3199)
  * The below current sensors output analog voltages and interface through the ADS1015:
  *   Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
  *   Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
  * Adafruit BME680 (P3660) Temp, Humidity, Pressure, VOC - By default, the i2c address is 0x77
+ * Solid State Relay supported by gpio
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -78,6 +82,9 @@
  * - Install NTP Client by Fabrice Weinberg
  * - Adafruit Neopixel library
  * - Adafruit BME680 library
+ * - Local Libraries:
+ *   bt_eepromlib by basement tech/zimTech
+ *   bt_mqttlib by basement tech/zimTech
  * 
  * I was building under IDE 1.6.7.  Upgraded to 1.8.15 and updated some libraries.
  * 
@@ -173,6 +180,9 @@
  * o finish ACS758_set_offset()
  * 
  * v2.0
+ * o moved the eeprom support functions to bt_eepromlib
+ * o moved the mqtt support functions to bt_mqttlib
+ * o cleaned up the data compartmentalization and removed some global variables
  * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
