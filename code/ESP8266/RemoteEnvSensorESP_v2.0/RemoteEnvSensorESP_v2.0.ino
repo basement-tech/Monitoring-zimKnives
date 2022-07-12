@@ -4,6 +4,9 @@
  * 
  * AT THIS POINT, IT DOES NOT COMPILE AND RUN !!! (USE VERSION 1.6 FOR NOW)
  * 
+ * UPDATE: testing with the GARAGE_REM configuration and the door sensor and SSR
+ * function as expected.
+ * 
  ***************************************/
 
 
@@ -170,7 +173,6 @@
  * o finish ACS758_set_offset()
  * 
  * v2.0
- * 
  * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
@@ -374,19 +376,21 @@ struct pin_init {
 #define   ACQ_ACTIVE  2  /* sampling loop for scope monitoring (also blue on-board LED) */
 //#define I2C_SDA     4  /* defined elsewhere */
 //#define I2C_SCL     5  /* defined elsewhere */
-#define   WIFI_LED   13 /* oops ... see below ... led connected to diff pins */
+#define   WIFI_LED    12 /* onboard LED to indicate WIFI connection */
+#define   GDOOR_PIN   13  /* input to provide door open/closed microswitch state */
+#define   SSR_PIN     14  /* pin for locally connected Solid State Relay */
 
 struct pin_init local_pins[] = {
-  {0,  "BD_LED",   OUTPUT,  false},
-  {2,  "SAMPLE",   OUTPUT, true},   /* also the blue onboard led */
-  {4,  "I2C_SDA",  OUTPUT, false},  /* initialized by the i2c class */
-  {5,  "I2C_SCL",  OUTPUT, false},  /* initialized by the i2c class */
-  {12, "UNUSED",   OUTPUT, false},
-  {13, "WIFI_LED", OUTPUT, true},
-  {14, "UNUSED",   OUTPUT, false},
-  {15, "UNUSED",   OUTPUT, false},
-  {16, "UNUSED",   OUTPUT, false},
-  {-1, "end",      INPUT,  false},  /* terminate the list */
+  {0,  "BD_LED",   OUTPUT,       false},  /* also tied to FLASH push button */
+  {2,  "SAMPLE",   OUTPUT,       true},   /* also the blue onboard led and pulled up*/
+  {4,  "I2C_SDA",  OUTPUT,       false},  /* initialized by the i2c class */
+  {5,  "I2C_SCL",  OUTPUT,       false},  /* initialized by the i2c class */
+  {12, "WIFI LED", OUTPUT,       true},   /* used by SPI if configured */
+  {13, "GRGDOOR",  INPUT,        true},   /* used by SPI if configured */
+  {14, "SSR",      OUTPUT,       true},   /* used by SPI if configured */
+  {15, "UNUSED",   OUTPUT,       false},  /* used by SPI if configured ... and pulled down */
+  {16, "UNUSED",   OUTPUT,       false},  /* high at boot deep sleep wakeup */
+  {-1, "end",      INPUT,        false},  /* terminate the list */
 };
 
 #endif
@@ -458,7 +462,7 @@ struct pin_init local_pins[] = {
   {5,  "I2C_SCL",  OUTPUT,       false},  /* initialized by the i2c class */
   {12, "WIFI LED", OUTPUT,       true},   /* used by SPI if configured */
   {13, "GRGDOOR",  INPUT,        true},   /* used by SPI if configured */
-  {14, "SSR",      OUTPUT,       false},   /* used by SPI if configured */
+  {14, "SSR",      OUTPUT,       true},   /* used by SPI if configured */
   {15, "UNUSED",   OUTPUT,       false},  /* used by SPI if configured ... and pulled down */
   {16, "UNUSED",   OUTPUT,       false},  /* high at boot deep sleep wakeup */
   {-1, "end",      INPUT,        false},  /* terminate the list */
@@ -506,7 +510,10 @@ void init_pins()  {
 //#define ACS758         1  // Hall Effect current sensor present
 //#define NEOPIXELS      1  // neopixels are present
 //#define ESTOP          1  // is there an estop status wire connected
-//#define MOM_SWITCH_P 1
+//#define MOM_SWITCH_P   1
+#define LOCAL_SSR      1  // solid state relay control
+#define GDOOR_SENSE    1  // garage door sense switch
+//#define BME680         1  // temp, hum, pressure, voc
 
 #endif
 
@@ -565,15 +572,24 @@ void init_pins()  {
 //Publish:
 
 #ifdef TEST_REM
+// This section is used for the zhome garage sensing module
+#define TOPIC_WIFI_RSSI  "bt-teststand/wifi_rssi"
+#define TOPIC_ENV_TEMP   "bt-teststand/temp"
+#define TOPIC_ENV_HUM    "bt-teststand/humidity"
+#define TOPIC_ENV_PRES   "bt-teststand/pressure"
+#define TOPIC_ENV_ALT    "bt-teststand/altitude"
+#define TOPIC_ENV_GASR   "bt-teststand/gasohms"
+#define TOPIC_ENV_GDOOR  "bt-teststand/grgdoor"
+#define TOPIC_STIME      "bt-teststand/time"
 
 // This section is used for the free air sensing module
-#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
-#define TOPIC_ENV_TEMP   "zk-env/temp"
-#define TOPIC_ENV_HUM    "zk-env/humidity"
-#define TOPIC_STIME      "zk-env/time"
-#define TOPIC_ENV_GASCO  "zk-env/gasco"
-#define TOPIC_ENV_GASPR  "zk-env/gaspr"
-#define TOPIC_ENV_GASRW  "zk-env/gasrw"
+//#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
+//#define TOPIC_ENV_TEMP   "zk-env/temp"
+//#define TOPIC_ENV_HUM    "zk-env/humidity"
+//#define TOPIC_STIME      "zk-env/time"
+//#define TOPIC_ENV_GASCO  "zk-env/gasco"
+//#define TOPIC_ENV_GASPR  "zk-env/gaspr"
+//#define TOPIC_ENV_GASRW  "zk-env/gasrw"
 
 
 // This section is used for the CNC Router sensing module
@@ -675,6 +691,7 @@ struct parameter parameters[] = {
 
 #ifdef TEST_REM
 struct parameter parameters[] = {
+  {TOPIC_SSR_STATE,  "", PARM_INT, false},
   {"","",PARM_UND, false},  /* terminate the list */
 };
 #endif
