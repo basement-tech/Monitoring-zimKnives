@@ -179,10 +179,14 @@
  * o connect the thermistor structure to the EEPROM values
  * o finish ACS758_set_offset()
  * 
+ * 
  * v2.0
  * o moved the eeprom support functions to bt_eepromlib
  * o moved the mqtt support functions to bt_mqttlib
  * o cleaned up the data compartmentalization and removed some global variables
+ * o tested with the TEST_REM and GARAGE_REM
+ *   (seems to be an issue with the SSR in that it stops working after a few days)
+ * + added debug code to do some system monitoring, including free heap (memory leaks)
  * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
@@ -2608,6 +2612,31 @@ void loop() {
   /* of mqtt publish block */
   
     sampleTimerOccured = false;
+    
+#ifdef L_DEBUG_MSG
+    Serial.println();
+    Serial.println("System monitoring:");
+    Serial.print("ESP.getBootMode(); ");
+    Serial.println(ESP.getBootMode());
+    Serial.print("ESP.getSdkVersion(); ");
+    Serial.println(ESP.getSdkVersion());
+    Serial.print("ESP.getBootVersion(); ");
+    Serial.println(ESP.getBootVersion());
+    Serial.print("ESP.getChipId(); ");
+    Serial.println(ESP.getChipId());
+    Serial.print("ESP.getFlashChipSize(); ");
+    Serial.println(ESP.getFlashChipSize());
+    Serial.print("ESP.getFlashChipRealSize(); ");
+    Serial.println(ESP.getFlashChipRealSize());
+    Serial.print("ESP.getFlashChipSizeByChipId(); ");
+    Serial.println(ESP.getFlashChipSizeByChipId());
+    Serial.print("ESP.getFlashChipId(); ");
+    Serial.println(ESP.getFlashChipId());
+    Serial.print("ESP.getFreeHeap(); ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.println();
+#endif
+
   } /* end of slow loop */
 
   yield();  /* let the wifi process run */
