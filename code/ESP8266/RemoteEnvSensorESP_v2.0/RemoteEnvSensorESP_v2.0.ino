@@ -10,9 +10,6 @@
  ***************************************/
 
 
-
-
-
 /*
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of these words as published by the author.
@@ -60,14 +57,16 @@
  * 
  * Hardware:
  * Adafruit Huzzah ESP8266 module (for development; ESP-12S (AF P2491) target)
- * Adafruit HTU21D Temp/Humidity i2c module - The HTU21D-F has a default I2C address of 0x40 and cannot be changed!
- * Adafruit ADS1015 12-bit i2c ADC (P1083) (Host of thermistors and current sensing)
+ * Adafruit HTU21D Temp/Humidity i2c module - The HTU21D-F has a default i2c address of 0x40 and cannot be changed!
+ * Adafruit ADS1015 12-bit i2c ADC (P1083) i2c address range: 0x48-0x4B (Host of thermistors and current sensing)
  * Adafruit MiCS5524 Gas Sensor (P3199)
  * The below current sensors output analog voltages and interface through the ADS1015:
  *   Adafruit INA169 Analog DC Current Sensor Breakout - 60V 5A Max (P1164)
  *   Allegro Micro Systems ACS758LCB-050U-PFF-T Hall Effect Current Sensor - 50A
  * Adafruit BME680 (P3660) Temp, Humidity, Pressure, VOC - By default, the i2c address is 0x77
  * Solid State Relay supported by gpio
+ * MCP23017 i2c based, 16 additional i/o lines - default i2c address of 0x20, can be changed
+ * 
  * 
  * Boards and Libraries:
  * - In Arduino IDE->File->Preferences, add this to the "Additional Board Managaer URLs" field:
@@ -82,6 +81,7 @@
  * - Install NTP Client by Fabrice Weinberg
  * - Adafruit Neopixel library
  * - Adafruit BME680 library
+ * - Adafruit MCP23017 library
  * - Local Libraries:
  *   bt_eepromlib by basement tech/zimTech
  *   bt_mqttlib by basement tech/zimTech
@@ -110,6 +110,7 @@
  *   LOCAL_SSR   (solid state relay control)
  *   GDOOR_SENSE (garage door sense switch)
  *   BME680      (temp, humidity, pressure, VOC)
+ *   MCP23017    (additional i/o capability)
  * 
  * SETUP:
  *   Allow for editing of the EEPROM parameters
@@ -187,6 +188,8 @@
  * o tested with the TEST_REM and GARAGE_REM
  *   (seems to be an issue with the SSR in that it stops working after a few days)
  * + added debug code to do some system monitoring, including free heap (memory leaks)
+ * + started adding support for MCP23017
+ * + added a re-subscribe to the case where mqtt connection is lost/regained
  * 
  * v1.6
  * + Seems that Adafruits newest ADS1015 library (v2.2.1) was changed to require #include <Adafruit_ADS1X15.h>
@@ -407,6 +410,25 @@ struct pin_init local_pins[] = {
   {-1, "end",      INPUT,        false},  /* terminate the list */
 };
 
+struct pin_init mcp_pins[] = {
+  {0,  "UNUSED",   OUTPUT,       false},
+  {1,  "UNUSED",   OUTPUT,       false},
+  {2,  "UNUSED",   OUTPUT,       false},
+  {3,  "UNUSED",   OUTPUT,       false},
+  {4,  "UNUSED",   OUTPUT,       false},
+  {5,  "UNUSED",   OUTPUT,       false},
+  {6,  "UNUSED",   OUTPUT,       false},
+  {7,  "UNUSED",   OUTPUT,       false},
+  {8,  "UNUSED",   OUTPUT,       false},
+  {9,  "UNUSED",   OUTPUT,       false},
+  {10, "UNUSED",   OUTPUT,       false},
+  {11, "UNUSED",   OUTPUT,       false},
+  {12, "UNUSED",   OUTPUT,       false},
+  {13, "UNUSED",   OUTPUT,       false},
+  {14, "UNUSED",   OUTPUT,       false},
+  {15, "UNUSED",   OUTPUT,       false},
+};
+
 #endif
 
 #ifdef CNC_REM
@@ -515,8 +537,8 @@ void init_pins()  {
 
 #ifdef TEST_REM
 
-#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
-#define HTU21DF_P      1  // Is the temp/hum module present
+#define WIFI_ON          1  // Should wifi be enabled; used for debug, not fully vetted
+#define HTU21DF_P        1  // Is the temp/hum module present
 //#define ADS1015_P      1  // Is the A/D present
 //#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
 //#define THERMISTORS    1  // Are we using the A/D to sense thermistors
@@ -525,47 +547,50 @@ void init_pins()  {
 //#define NEOPIXELS      1  // neopixels are present
 //#define ESTOP          1  // is there an estop status wire connected
 //#define MOM_SWITCH_P   1
-#define LOCAL_SSR      1  // solid state relay control
-#define GDOOR_SENSE    1  // garage door sense switch
+#define LOCAL_SSR        1  // solid state relay control
+#define GDOOR_SENSE      1  // garage door sense switch
 //#define BME680         1  // temp, hum, pressure, voc
+//#define MCP23017       1  // additional 16 gpio pins on separate chip
 
 #endif
 
 #ifdef ENV_REM
 
-#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
-#define HTU21DF_P      1  // Is the temp/hum module present
-#define ADS1015_P      1  // Is the A/D present
-#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
+#define WIFI_ON          1  // Should wifi be enabled; used for debug, not fully vetted
+#define HTU21DF_P        1  // Is the temp/hum module present
+#define ADS1015_P        1  // Is the A/D present
+#define MICS5524_P       1  // Is the gas sensor present (requires ADS1015_P)
 //#define THERMISTORS    1  // Are we using the A/D to sense thermistors
 //#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
 //#define ACS758         1  // Hall Effect current sensor present
 //#define NEOPIXELS      1  // neopixels are present
 //#define ESTOP          1  // is there an estop status wire connected
-//#define MOM_SWITCH_P 1
+//#define MOM_SWITCH_P   1
+//#define MCP23017       1  // additional 16 gpio pins on separate chip
 
 #endif
 
 
 #ifdef CNC_REM
 
-#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+#define WIFI_ON          1  // Should wifi be enabled; used for debug, not fully vetted
 //#define HTU21DF_P      1  // Is the temp/hum module present
-#define ADS1015_P      1  // Is the A/D present
+#define ADS1015_P        1  // Is the A/D present
 //#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
-#define THERMISTORS    1  // Are we using the A/D to sense thermistors
+#define THERMISTORS      1  // Are we using the A/D to sense thermistors
 //#define INA169         0  // Is the current shunt present (choose one: INA169 or ACS759)
-#define ACS758         1  // Hall Effect current sensor present
-#define NEOPIXELS      1  // neopixels are present
-#define ESTOP          1  // is there an estop status wire connected
-#define MOM_SWITCH_P   1
+#define ACS758           1  // Hall Effect current sensor present
+#define NEOPIXELS        1  // neopixels are present
+#define ESTOP            1  // is there an estop status wire connected
+#define MOM_SWITCH_P     1
+//#define MCP23017       1  // additional 16 gpio pins on separate chip
 
 #endif
 
 
 #ifdef GARAGE_REM
 
-#define WIFI_ON        1  // Should wifi be enabled; used for debug, not fully vetted
+#define WIFI_ON          1  // Should wifi be enabled; used for debug, not fully vetted
 //#define HTU21DF_P      1  // Is the temp/hum module present
 //#define ADS1015_P      1  // Is the A/D present
 //#define MICS5524_P     1  // Is the gas sensor present (requires ADS1015_P)
@@ -575,9 +600,10 @@ void init_pins()  {
 //#define NEOPIXELS      1  // neopixels are present
 //#define ESTOP          1  // is there an estop status wire connected
 //#define MOM_SWITCH_P   1
-#define LOCAL_SSR      1  // solid state relay control
-#define GDOOR_SENSE    1  // garage door sense switch
-#define BME680         1  // temp, hum, pressure, voc
+#define LOCAL_SSR        1  // solid state relay control
+#define GDOOR_SENSE      1  // garage door sense switch
+#define BME680           1  // temp, hum, pressure, voc
+//#define MCP23017       1  // additional 16 gpio pins on separate chip
 
 #endif
 
@@ -680,6 +706,13 @@ void init_pins()  {
 
 #endif
 
+//Subscribe:
+
+/*
+ * retain the status of the subscription request.
+ * used in retry logic.
+ */
+bool mqtt_subscribed = false;
 
 /* 
  * Potential list of topics to which to Subscribe: 
@@ -1693,8 +1726,14 @@ void setup() {
   // Setup the MQTT connection and attempt an initial publish
   LMQTTConnect(true, pmon_config->mqtt_server, pmon_config->mqtt_location);
 
-  // subscribe to the topics specified above
+  /*
+   *  subscribe to the topics specified above and
+   *  sync up other values with the broker
+   */
   if (mqtt.connected())  {
+    /*
+     * subscribe to the topics specified in the structure above
+     */
     MQTT_Subscribe();
 
 #ifdef NEOPIXELS
@@ -1746,7 +1785,7 @@ void setup() {
 #endif
       ;
 #endif /* NEOPIXELS */
-  }
+  } /* mqtt connected */
 #endif /* WIFI_ON */
 
 #ifdef HTU21DF_P
@@ -2604,6 +2643,14 @@ void loop() {
       }
       else
         LMQTTConnect(false, pmon_config->mqtt_server, pmon_config->mqtt_location);
+
+      /*
+       * assume that the subscriptions were lost and re-subscribe
+       */
+      if (mqtt.connected()) {
+        if(MQTT_Subscribe() == true)
+          l_debugln("Successful re-subscribe after mqtt connection loss", 2);
+      }
     }
 
 
