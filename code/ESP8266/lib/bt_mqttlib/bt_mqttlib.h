@@ -26,6 +26,7 @@
  */
 struct parameter {
   char topic[64];  /* used as the key into this list */
+  char label[32];  /* human readable label */
   char value[64];  /* value as string */
   int  parm_type;  /* convert from string according to this */
   bool valid;      /* set to true once a value has been received */
