@@ -74,6 +74,8 @@
  * - Go to the Tools->Board->Board Manager ... (at the top of the board selection list)
  * - Install "esp8266 by ESP8266 Community"
  * 
+ * For Thingpulse Color Display V2 use LOLIN(WEMOS) D1 R2 & mini
+ * 
  * In Tools->Manage Libraries ... :
  * - Install the Adafruit ADS1X15 by Adafruit
  * - Install Adafruit HTU21DF by Adafruit
@@ -103,7 +105,7 @@
  *   INA169      (high side current monitor formulas, etc.)
  *   ACS758      (hall effect current sensor; mutually exclusive to INA169 (i.e. pick one)
  *   MiCS5524    (gas sensor formulas, etc.)
- *   NEOPIXELS   (neopixel characteristics, display modes, etc.)
+ *   NEOPIXELS   (neopixel characteristics,  modes, etc.)
  *   NIST        (network time functions)
  *   HTU21D      (temp and humidity sensor formulas, etc.)
  *   MQTT        (mosquito dialog and json processing)
@@ -616,7 +618,7 @@ void init_pins()  {
 #ifdef TEST_REM
 // This section is used for the zhome garage sensing module
 #define TOPIC_WIFI_RSSI  "bt-teststand/wifi_rssi"
-#define TOPIC_ENV_TEMP   "bt-teststand/temp"
+#define TOPIC_ENV_TEMP   "bt-garage/temp"
 #define TOPIC_ENV_HUM    "bt-teststand/humidity"
 #define TOPIC_ENV_PRES   "bt-teststand/pressure"
 #define TOPIC_ENV_ALT    "bt-teststand/altitude"
@@ -732,29 +734,29 @@ bool mqtt_subscribed = false;
 
 #ifdef CNC_REM
 struct parameter parameters[] = {
-  {TOPIC_NEOPXL_MODE,  "", "", PARM_INT, false},
-  {TOPIC_NEOPXL_RANGE, "", "", PARM_INT, false},
+  {TOPIC_NEOPXL_MODE,  "", "", PARM_INT, false, true},
+  {TOPIC_NEOPXL_RANGE, "", "", PARM_INT, false, false},
   {"","","",PARM_UND, false},  /* terminate the list */
 };
 #endif
 
 #ifdef TEST_REM
 struct parameter parameters[] = {
-  {TOPIC_SSR_STATE,  "", "", PARM_INT, false},
-  {"","","",PARM_UND, false},  /* terminate the list */
+  {TOPIC_ENV_TEMP,  "Garage Temp", "", PARM_FLOAT, false, true},
+  {"","","",PARM_UND, false, false},  /* terminate the list */
 };
 #endif
 
 #ifdef ENV_REM
 struct parameter parameters[] = {
-  {"","","",PARM_UND, false},  /* terminate the list */
+  {"","","",PARM_UND, false, false},  /* terminate the list */
 };
 #endif
 
 #ifdef GARAGE_REM
 struct parameter parameters[] = {
-  {TOPIC_SSR_STATE,  "", "", PARM_INT, false},
-  {"","","",PARM_UND, false},  /* terminate the list */
+  {TOPIC_SSR_STATE,  "", "", PARM_INT, false, true},
+  {"","","",PARM_UND, false, false},  /* terminate the list */
 };
 #endif
 
@@ -1888,6 +1890,10 @@ void loop() {
      * keep track of milliseconds used in the fast loop
      */
     previousMillis = millis();
+
+#ifdef GFX_DISP
+    touchWasTouched();
+#endif
 
     /*
      * Reminder, the MOM_SWITCH is on an interrupt:

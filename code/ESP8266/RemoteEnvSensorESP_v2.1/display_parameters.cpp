@@ -52,7 +52,7 @@ CalibrationCallback calibration = &calibrationCallback;
 /*
  * describe the macro virtual screen characteristics
  */
-int screenCount = 2;
+int screenCount = 3;
 long lastDownloadUpdate = millis();
 
 uint16_t screen = 0;  // which screen number is being displayed
@@ -70,25 +70,6 @@ static void drawLabelValue(uint8_t line, String label, String value);
 static void drawForecastTable(uint8_t start);
 static void drawAbout();
 static void drawSeparator(uint16_t y);
-
-
-/*
- * set up the mqtt topics that are to be displayed
- */
-#define TOPIC_WIFI_RSSI  "bt-garage/wifi_rssi"
-#define TOPIC_ENV_TEMP   "bt-garage/temp"
-#define TOPIC_ENV_HUM    "bt-garage/humidity"
-#define TOPIC_ENV_PRES   "bt-garage/pressure"
-#define TOPIC_ENV_ALT    "bt-garage/altitude"
-#define TOPIC_ENV_GASR   "bt-garage/gasohms"
-#define TOPIC_ENV_GDOOR  "bt-garage/grgdoor"
-#define TOPIC_STIME      "bt-garage/time"
-
-
-struct parameter disp_parameters[] = {
-  {TOPIC_ENV_TEMP,  "Garage Temp", "", PARM_INT, false},
-  {"","","",PARM_UND, false},  /* terminate the list */
-};
 
 void init_touchscreen(bool cal)  {
 //    loadPropertiesFromSpiffs();
@@ -164,36 +145,64 @@ void init_touchscreen(bool cal)  {
   }
 }
 
+TS_Point last_point_touched;
+bool point_touched = false;
+void touchWasTouched(void)  {
+    if (touchController.isTouched(0)) {
+      point_touched = true;
+      last_point_touched = touchController.getPoint();
+    }
+}
+
 /*
  * update the touchscreen display
  */
 void disp_update(time_t now)  {
-    /*
-     * clear the screen at the start of each update cycle
-     */
-    gfx.fillBuffer(MINI_BLACK);
-    
-    if (screen == 0) {
-      drawTime(now);
-      drawWifiQuality();
-    } 
-    else if (screen == 1) {
-      drawAbout();
-    }
-    gfx.commit();
-}
-
-// Update the internet based information and update screen
-void updateData() {
-//time_t now = time(nullptr);
-
-  gfx.fillBuffer(MINI_BLACK);
-  gfx.setFont(ArialRoundedMTBold_14);
   
-  Serial.printf("Free mem: %d\n",  ESP.getFreeHeap());
+  /*
+   * if the screen has been touched, take the indicated action
+   */
+  if(point_touched == true)  {
+    point_touched = false;
 
-  delay(1000);
+    Serial.printf("Touch point detected at %d/%d.\n", last_point_touched.x, last_point_touched.y);
+
+    /*
+     * if the top of the screen has been touched,
+     * change the time format
+     */
+    if (last_point_touched.y < 80) {
+      IS_STYLE_12HR = !IS_STYLE_12HR;
+    }
+
+    /*
+     * else increment to the next screen
+     */
+    else {
+      screen++;
+      if(screen >= screenCount)
+        screen = 0;
+    }
+  }
+  
+  /*
+   * clear the screen at the start of each update cycle
+   */
+  gfx.fillBuffer(MINI_BLACK);
+  
+  if (screen == 0) {
+    drawTime(now);
+    drawWifiQuality();
+  } 
+  else if (screen == 1) {
+    drawAbout();
+  }
+  else if (screen == 2)
+    drawSubscribedTopicData();
+    
+  gfx.commit();
 }
+
 
 // Progress bar helper
 void drawProgress(uint8_t percentage, String text) {
@@ -261,6 +270,18 @@ void drawSubscribedTopicData() {
   gfx.setTextAlignment(TEXT_ALIGN_CENTER);
   gfx.setColor(MINI_WHITE);
   gfx.drawString(120, 2, "Current Conditions");
+
+  int i = 0;
+
+  while(parameters[i].parm_type != PARM_UND)  {
+    if(parameters[i].valid == true)  {
+      Serial.print("value = <");Serial.print(parameters[i].value); Serial.println(">");
+      drawLabelValue(i, parameters[i].label, String(parameters[i].value));
+    }
+    else
+      drawLabelValue(i, parameters[i].label, String("not set"));
+    i++;
+  }
 /*
   // String weatherIcon;
   // String weatherText;

@@ -34,16 +34,15 @@
 #include "bt_mqttlib.h"
 #include "Arduino.h"
 
+#define FL_DEBUG_MSG
+//#define FFL_DEBUG_MSG
+
 /*
  * buffer for the incoming mqtt message; used by the json parser
  */
 char mqtt_incoming[JSON_LVBUF_SIZE];
 
-/*
- * as it says, a place to put the components of a deconstructed json string
- */
-struct json_parts json_parts[JSON_DEPTH_LMT];
-int    json_level = 0;
+
 
 /*
  * convert the string based value from the json string
@@ -114,6 +113,11 @@ int parm_to_value(char *topic, bool *num_value)  {
  */
 int set_parm_stvalue(char *topic, char *value)  {
   int status = -1;
+#ifdef FFL_DEBUG_MSG
+  Serial.print("Setting >"); Serial.print(topic); Serial.print("< to >");
+  Serial.print(value); Serial.println("<");
+#endif
+
   for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
     if(strcmp(topic, parameters[i].topic) == 0)  {
       strcpy(parameters[i].value, value);
@@ -144,6 +148,7 @@ int set_parm_valid(char *topic, bool valid)  {
  */
 int get_parm_valid(char *topic, bool *valid)  {
   int status = -1;
+  
   for(int i = 0; parameters[i].parm_type != PARM_UND; i++) {
     if(strcmp(topic, parameters[i].topic) == 0)  {
       *valid = parameters[i].valid;
@@ -153,6 +158,27 @@ int get_parm_valid(char *topic, bool *valid)  {
   return(status);
 }
 
+/*
+ * return the index of the child at the depth given
+ * of the "value" value 
+ */
+int find_value_among_children(json_parts_c_t *json_parts, int depth)  {
+  int status = -1;
+  int j = 0;
+
+  /*
+   * find the source of the value among the children
+   */
+  while((json_parts[depth].child[j].label[0] != '\0') && (j < JSON_CHILDREN))  {
+     if(strcmp("\"value\"", json_parts[depth].child[j].label) == 0)
+        status = j;
+     j++;
+  }
+#ifdef FFL_DEBUG_MSG
+  Serial.print("find_value_among_children returning "); Serial.println(status);
+#endif
+  return(status);
+}
 
 /*
  * mqtt incoming (subscribed) message handling
@@ -161,6 +187,10 @@ int get_parm_valid(char *topic, bool *valid)  {
  */
 void callback(char* topic, byte* payload, unsigned int length) {
   int i = 0;
+  int n_child = 0;
+ 
+  json_parts_c_t json_parts_c[JSON_DEPTH_LMT]; /* a place to put the components of a deconstructed json string */
+  int    json_level = 0;
 
   Serial.print("Message back from broker, topic:"); Serial.println(topic);
 
@@ -174,25 +204,41 @@ void callback(char* topic, byte* payload, unsigned int length) {
   /*
    * parse the json string and remember the deepest level
    */
-  json_level = simple_json_parser(mqtt_incoming);
+  json_level = simple_json_parser_children(json_parts_c, mqtt_incoming);
 
 #ifdef FL_DEBUG_MSG
   /*
    * burp out the json parts structure
    */
-  Serial.print("json_level = ");Serial.println(json_level);
-  for (i = 0; i < JSON_DEPTH_LMT; i++)  {
-    Serial.print("json_parts[");Serial.print(i);Serial.print("].label = ->");
-    Serial.print(json_parts[i].label);Serial.print("<-");
-    Serial.print(" value = ->");Serial.print(json_parts[i].value);Serial.println("<-");
+  Serial.print("json_level = "); Serial.println(json_level);
+  for (int i = 0; i < JSON_DEPTH_LMT; i++)  {
+    for(int j = 0; j < JSON_CHILDREN; j++)  {
+       Serial.print("json_parts["); Serial.print(i); Serial.print("].child["); Serial.print(j);
+       Serial.print("].label = ->"); Serial.print(json_parts_c[i].child[j].label); Serial.print("<-");
+       Serial.print("  value = ->"); Serial.print(json_parts_c[i].child[j].value); Serial.println("<-");
+    }
   }
 #endif
   /* successful parsing, set the value in the parameters array */
   if(json_level >= 0) {
-    if(set_parm_stvalue(topic, json_parts[json_level].value) < 0) {
+
+    /*
+     * find the value json label among the children
+     */
+    if((n_child = find_value_among_children(json_parts_c, json_level)) < 0)  {
+      Serial.print("callback():error finding value in json_parts[], topic: ->");
+      Serial.print(topic);Serial.println("<-");
+    }
+
+    /*
+     * find the destination of the value for the subject
+     * topic and set its value
+     */
+    else if(set_parm_stvalue(topic, json_parts_c[json_level].child[n_child].value) < 0) {
       Serial.print("callback():error setting value in parameters[], topic: ->");
       Serial.print(topic);Serial.println("<-");
     }
+
     /*
      * put this here instead of inside set_parm_stvalue() so that
      * it takes an mqtt message to cause the valid flag to be set
@@ -203,6 +249,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   /* error parsing */
   else
       Serial.println("callback(): error in json string parsing");
+
+  Serial.println("Exiting mqtt callback");
 }
 
 
@@ -345,7 +393,7 @@ String json_sample(String parm, int value, String location, String tstamp)  {
 
 
 
-
+#ifdef INC_DEPRECATED
 /*
  * this is a super-simple json parser.
  * it expects a global structure of the type json_parts to be declared.
@@ -479,4 +527,151 @@ int simple_json_parser(char jbuffer[])
 #endif
   return(max_depth);
 }
+#endif
 
+/*
+ * this is a super-simple json parser.
+ * it expects a global structure of the type json_parts to be declared.
+ *
+ * results are deposited in the structure json_parts of type json_parts_t.
+ * if the top leval has children, they are deposited one level lower in the structure:
+ * 
+ * strcpy(buffer, "{ \"temp\":{ \"value\": 8.23,\"location\": \"garage\",\"tstamp\": \"22\\:59\\:55\"}}");
+ * simple_json_parser_children(buffer);
+ * yields:
+ * parser returned 1
+ * json_parts[0].child[0].label = ->"temp"<- value = -><-
+ * json_parts[0].child[1].label = -><- value = -><-
+ * json_parts[0].child[2].label = -><- value = -><-
+ * json_parts[0].child[3].label = -><- value = -><-
+ * json_parts[0].child[4].label = -><- value = -><-
+ * json_parts[1].child[0].label = ->"value"<- value = ->8.23<-
+ * json_parts[1].child[1].label = ->"location"<- value = ->"garage"<-
+ * json_parts[1].child[2].label = ->"tstamp"<- value = ->"22:59:55"<-
+ *
+ * NOTE: special characters can be escaped with a leading '\'
+ *
+ * char buffer [] : the json string to parse
+ * returns:  max_depth: the lowest level index (not count) into json_parts[]
+ *          -1:         if an error occured
+ *
+ * checks to make sure all levels are closed and returns error if not
+ */
+int simple_json_parser_children(json_parts_c_t *json_parts, char jbuffer[])
+{
+
+  char *pbuffer = jbuffer; /* string to be parsed */
+  char *pos = NULL; /* pointer to where we are in the string during parsing */
+  int depth = -1; /* how far deep into the string and buffer */
+  int cchild = 0; /* child counter */
+  uint8_t echar = false; /* pending escaped character */
+  int max_depth = 0;
+  int i = 0, j = 0, k = 0;
+
+  /*
+   * initialize the array of structures tha will hold
+   * the resultant pieces of the json string
+   */
+  for(i = 0; i < JSON_DEPTH_LMT; i++)  {
+    json_parts[i].closed = true;
+    for(j = 0; j < JSON_CHILDREN; j++)  {
+       json_parts[i].child[j].label[0] = '\0';
+       json_parts[i].child[j].value[0] = '\0';
+    }
+  }
+
+
+  /*
+   * parse the buffer
+   */
+  i = 0; j = 0; k = 0;  /* just for good measure */
+  while(*pbuffer != '\0')  {
+#ifdef FFL_DEBUG_MSG
+    Serial.print("Processing :");Serial.println(*pbuffer);
+#endif
+    /*
+     * process the escaped character if pending
+     */
+    if(echar == true)  {
+      echar = false; /* clear the escaped character flag */
+#ifdef FFL_DEBUG_MSG
+      printf("Escaping >%c<\n", *pbuffer);
+#endif
+      *pos++ = *pbuffer;
+    }
+    else  {
+      switch(*pbuffer)  {
+
+        case ' ': /* skip blanks */
+          break;
+        
+        case '\\': /* escape the next character */
+          echar = true;
+          break;
+
+        case '{':
+          depth++; /* starting a new label for a new pair */
+#ifdef FFL_DEBUG_MSG
+          Serial.print("opening level:");Serial.println(depth);
+          printf("opening level: %d\n", depth);
+#endif
+          json_parts[depth].closed = false;
+          if(depth > max_depth)  /* for the return value */
+            max_depth = depth;
+          pos = json_parts[depth].child[cchild].label;  /* move to the label field */
+
+          break;
+
+
+        case ',':  /* comma will always terminate a value, but not a level */
+#ifdef FFL_DEBUG_MSG
+          Serial.print("closing child:");Serial.println(j);
+#endif
+          *pos = '\0';  /* terminate the value */
+          cchild++; /* move to the next child in the level */
+#ifdef FFL_DEBUG_MSG
+          printf("Moving to level %d child %d\n", depth, cchild);
+#endif
+          pos = json_parts[depth].child[cchild].label;  /* move to the label field */
+
+          break;
+
+
+        case '}':  /* always terminating a value */
+#ifdef FFL_DEBUG_MSG
+          Serial.print("closing level:");Serial.println(depth);
+#endif
+          *pos = '\0'; /* terminate over the '}' */
+          json_parts[depth].closed = true;
+
+          depth--;
+
+          break;
+
+        case ':':  /* colon will always terminate label */
+
+          *pos = '\0';  /* terminate the label */
+          pos = json_parts[depth].child[cchild].value;  /* move to the value field */
+
+          break;
+
+        /*
+        * non-special character: fill it in to the currently active buffer
+        */
+        default:
+#ifdef FFL_DEBUG_MSG
+          printf("*pbuffer = %c\n", *pbuffer);
+#endif
+          *pos++ = *pbuffer;
+          break;
+      };  /* of switch */
+    } /* if echar */
+    pbuffer++;
+  }  /* of while */
+  for(i = 0; i < JSON_DEPTH_LMT; i++)  {
+    if(json_parts[i].closed == false)
+      return(-1);
+  }
+
+  return(max_depth);
+}
