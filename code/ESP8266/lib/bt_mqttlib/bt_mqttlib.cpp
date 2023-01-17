@@ -206,7 +206,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
    */
   json_level = simple_json_parser_children(json_parts_c, mqtt_incoming);
 
-#ifdef FL_DEBUG_MSG
+#ifdef FFL_DEBUG_MSG
   /*
    * burp out the json parts structure
    */

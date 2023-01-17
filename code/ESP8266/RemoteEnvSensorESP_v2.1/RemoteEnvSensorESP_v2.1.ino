@@ -619,7 +619,7 @@ void init_pins()  {
 // This section is used for the zhome garage sensing module
 #define TOPIC_WIFI_RSSI  "bt-teststand/wifi_rssi"
 #define TOPIC_ENV_TEMP   "bt-garage/temp"
-#define TOPIC_ENV_HUM    "bt-teststand/humidity"
+#define TOPIC_ENV_HUM    "bt-garage/humidity"
 #define TOPIC_ENV_PRES   "bt-teststand/pressure"
 #define TOPIC_ENV_ALT    "bt-teststand/altitude"
 #define TOPIC_ENV_GASR   "bt-teststand/gasohms"
@@ -743,6 +743,7 @@ struct parameter parameters[] = {
 #ifdef TEST_REM
 struct parameter parameters[] = {
   {TOPIC_ENV_TEMP,  "Garage Temp", "", PARM_FLOAT, false, true},
+  {TOPIC_ENV_HUM,   "Garage Humidity", "", PARM_FLOAT, false, true},
   {"","","",PARM_UND, false, false},  /* terminate the list */
 };
 #endif

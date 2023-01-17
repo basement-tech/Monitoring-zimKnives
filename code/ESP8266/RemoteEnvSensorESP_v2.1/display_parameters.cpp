@@ -266,21 +266,27 @@ void drawTime(time_t now) {
 
 
 void drawSubscribedTopicData() {
-  gfx.setFont(ArialRoundedMTBold_14);
+  gfx.setFont(ArialRoundedMTBold_36);
   gfx.setTextAlignment(TEXT_ALIGN_CENTER);
   gfx.setColor(MINI_WHITE);
-  gfx.drawString(120, 2, "Current Conditions");
+  gfx.drawString(120, 2, "Current");
+  gfx.drawString(120, 36, "Conditions");
+  gfx.drawString(120, 72, "----------");
 
   int i = 0;
+  int line = 5;
+
+  gfx.setFont(ArialRoundedMTBold_14);
 
   while(parameters[i].parm_type != PARM_UND)  {
     if(parameters[i].valid == true)  {
       Serial.print("value = <");Serial.print(parameters[i].value); Serial.println(">");
-      drawLabelValue(i, parameters[i].label, String(parameters[i].value));
+      drawLabelValue(line, parameters[i].label, String(parameters[i].value));
     }
     else
-      drawLabelValue(i, parameters[i].label, String("not set"));
+      drawLabelValue(line, parameters[i].label, String("not set"));
     i++;
+    line++;
   }
 /*
   // String weatherIcon;
