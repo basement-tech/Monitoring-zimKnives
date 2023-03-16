@@ -620,11 +620,11 @@ void init_pins()  {
 #define TOPIC_WIFI_RSSI  "bt-teststand/wifi_rssi"
 #define TOPIC_ENV_TEMP   "bt-garage/temp"
 #define TOPIC_ENV_HUM    "bt-garage/humidity"
-#define TOPIC_ENV_PRES   "bt-teststand/pressure"
-#define TOPIC_ENV_ALT    "bt-teststand/altitude"
-#define TOPIC_ENV_GASR   "bt-teststand/gasohms"
-#define TOPIC_ENV_GDOOR  "bt-teststand/grgdoor"
-#define TOPIC_STIME      "bt-teststand/time"
+#define TOPIC_ENV_PRES   "bt-garage/pressure"
+#define TOPIC_ENV_ALT    "bt-garage/altitude"
+#define TOPIC_ENV_GASR   "bt-garage/gasohms"
+#define TOPIC_ENV_GDOOR  "bt-garage/grgdoor"
+#define TOPIC_STIME      "bt-garage/time"
 
 // This section is used for the free air sensing module
 //#define TOPIC_WIFI_RSSI  "zk-env/wifi_rssi"
@@ -741,9 +741,15 @@ struct parameter parameters[] = {
 #endif
 
 #ifdef TEST_REM
+
 struct parameter parameters[] = {
-  {TOPIC_ENV_TEMP,  "Garage Temp", "", PARM_FLOAT, false, true},
-  {TOPIC_ENV_HUM,   "Garage Humidity", "", PARM_FLOAT, false, true},
+  {TOPIC_ENV_TEMP,  "Garage Temp",     "", PARM_FLOAT,  false, true},
+  {TOPIC_ENV_HUM,   "Garage Humidity", "", PARM_FLOAT,  false, true},
+  {TOPIC_ENV_PRES,  "Garage Pressure", "", PARM_FLOAT,  false, true},
+  {TOPIC_ENV_ALT,   "Garage Altitude", "", PARM_FLOAT,  false, true},
+  {TOPIC_ENV_GASR,  "Garage GasOhms",  "", PARM_FLOAT,  false, true},
+  {TOPIC_ENV_GDOOR, "Garage Door",     "", PARM_INT,    false, true},
+  {TOPIC_STIME,     "Garage Sample t", "", PARM_STRING, false, true},
   {"","","",PARM_UND, false, false},  /* terminate the list */
 };
 #endif
@@ -2413,7 +2419,7 @@ void loop() {
       #endif
         ;
       else
-      #ifdef L_DEBUG_MSG
+      #ifdef L_DEBUG_MSGtemp
         Serial.println("Publish failed")
       #endif
         ;

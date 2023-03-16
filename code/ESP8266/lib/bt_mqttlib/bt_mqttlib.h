@@ -67,18 +67,16 @@ struct json_parts {
 /*
  * in support of simple json parser that understands children
  */
-struct json_child {
+typedef struct json_child {
   char label[JSON_LVBUF_SIZE];
   char value[JSON_LVBUF_SIZE];
-};
-typedef struct json_child json_child;
+} json_child_t;
 
 
-struct json_parts_c {
-  json_child child[JSON_CHILDREN];  /* simple children only, child[0] is parent/main */
+typedef struct json_parts_c {
+  json_child_t child[JSON_CHILDREN];  /* simple children only, child[0] is parent/main */
   int8_t closed;  /* is this level closed */
-};
-typedef struct json_parts_c json_parts_c_t;
+} json_parts_c_t;
 
 void callback(char* topic, byte* payload, unsigned int length);
 String macToStr(const uint8_t* mac);

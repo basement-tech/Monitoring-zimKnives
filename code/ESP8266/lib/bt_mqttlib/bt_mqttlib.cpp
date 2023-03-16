@@ -567,6 +567,7 @@ int simple_json_parser_children(json_parts_c_t *json_parts, char jbuffer[])
   uint8_t echar = false; /* pending escaped character */
   int max_depth = 0;
   int i = 0, j = 0, k = 0;
+  uint8_t reading_value = false;  // are we reading a value versus label
 
   /*
    * initialize the array of structures tha will hold
@@ -619,6 +620,7 @@ int simple_json_parser_children(json_parts_c_t *json_parts, char jbuffer[])
           if(depth > max_depth)  /* for the return value */
             max_depth = depth;
           pos = json_parts[depth].child[cchild].label;  /* move to the label field */
+          reading_value = false;
 
           break;
 
@@ -633,6 +635,7 @@ int simple_json_parser_children(json_parts_c_t *json_parts, char jbuffer[])
           printf("Moving to level %d child %d\n", depth, cchild);
 #endif
           pos = json_parts[depth].child[cchild].label;  /* move to the label field */
+          reading_value = false;
 
           break;
 
@@ -643,15 +646,26 @@ int simple_json_parser_children(json_parts_c_t *json_parts, char jbuffer[])
 #endif
           *pos = '\0'; /* terminate over the '}' */
           json_parts[depth].closed = true;
+          reading_value = false;
 
           depth--;
 
           break;
 
+        /*
+         * special case for colon's: if we're reading a label
+         * the colon will terminate the label.  However, if reading
+         * a value treat it as just another character (i.e. use context to escape)
+         */
         case ':':  /* colon will always terminate label */
 
-          *pos = '\0';  /* terminate the label */
-          pos = json_parts[depth].child[cchild].value;  /* move to the value field */
+	        if(reading_value == true)
+            *pos++ = *pbuffer;
+          else  {
+             *pos = '\0';  /* terminate the label */
+              pos = json_parts[depth].child[cchild].value;  /* move to the value field */
+	            reading_value = true;
+	        }
 
           break;
 
