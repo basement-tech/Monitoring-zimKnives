@@ -66,6 +66,7 @@
  * Adafruit BME680 (P3660) Temp, Humidity, Pressure, VOC - By default, the i2c address is 0x77
  * Solid State Relay supported by gpio
  * MCP23017 i2c based, 16 additional i/o lines - default i2c address of 0x20, can be changed
+ * ThingPulse ESP8266 WiFi Color Display Kit 2.4 (NEED TO USE "LOLIN(WEMOS) D1 R2 & mini" BOARD in Arduino IDE)
  * 
  * 
  * Boards and Libraries:
@@ -182,6 +183,14 @@
  * o connect the thermistor structure to the EEPROM values
  * o finish ACS758_set_offset()
  * 
+ * v2.1
+ * + added support for thing_pulse display
+ *   ... tested with garage topics published by another device
+ *   (displays a 2nd page of subscribed topics)
+ * o modified definition of struct parameters in bt_mqttlib.h to
+ *   accommodate a display label
+ *   NO LONGER COMPATIBLE WITH LESSER VERSIONS OF THIS CODE (<=2.0)
+ * o added/updated/fixed support for ":" in json string
  * 
  * v2.0
  * o moved the eeprom support functions to bt_eepromlib
@@ -555,6 +564,7 @@ void init_pins()  {
 //#define BME680         1  // temp, hum, pressure, voc
 //#define MCP23017       1  // additional 16 gpio pins on separate chip
 #define GFX_DISP         1  // graphics touchscreen
+
 
 #endif
 
