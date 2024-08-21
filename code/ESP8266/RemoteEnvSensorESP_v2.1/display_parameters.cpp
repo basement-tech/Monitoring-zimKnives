@@ -1,4 +1,6 @@
 
+#ifdef ARDUINO_ESP8266_WEMOS_D1MINI
+
 #include <ESP8266WiFi.h>
 
 #include <XPT2046_Touchscreen.h>
@@ -385,3 +387,5 @@ String getTime(time_t *timestamp) {
   sprintf(buf, "%02d:%02d", timeInfo->tm_hour, timeInfo->tm_min);
   return String(buf);
 }
+
+#endif //ARDUINO_ESP8266_WEMOS_D1MINI

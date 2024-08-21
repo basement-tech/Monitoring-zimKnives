@@ -1,3 +1,5 @@
+#ifdef ARDUINO_ESP8266_WEMOS_D1MINI
+
 #include "TouchControllerWS.h"
 
 TouchControllerWS::TouchControllerWS(XPT2046_Touchscreen *touchScreen) {
@@ -112,3 +114,5 @@ TS_Point TouchControllerWS::getPoint() {
     p.y = y;
     return p;
 }
+
+#endif // ARDUINO_ESP8266_WEMOS_D1MINI

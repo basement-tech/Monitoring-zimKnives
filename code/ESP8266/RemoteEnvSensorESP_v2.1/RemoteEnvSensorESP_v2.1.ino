@@ -66,7 +66,9 @@
  * Adafruit BME680 (P3660) Temp, Humidity, Pressure, VOC - By default, the i2c address is 0x77
  * Solid State Relay supported by gpio
  * MCP23017 i2c based, 16 additional i/o lines - default i2c address of 0x20, can be changed
- * ThingPulse ESP8266 WiFi Color Display Kit 2.4 (NEED TO USE "LOLIN(WEMOS) D1 R2 & mini" BOARD in Arduino IDE)
+ * ThingPulse ESP8266 WiFi Color Display Kit 2.4 
+ *   (NEED TO USE "LOLIN(WEMOS) D1 R2 & mini" BOARD in Arduino IDE 
+ *    i.e. ARDUINO_ESP8266_WEMOS_D1MINI is #defined by IDE)
  * 
  * 
  * Boards and Libraries:
@@ -191,6 +193,8 @@
  *   accommodate a display label
  *   NO LONGER COMPATIBLE WITH LESSER VERSIONS OF THIS CODE (<=2.0)
  * o added/updated/fixed support for ":" in json string
+ * o using ARDUINO_ESP8266_WEMOS_D1MINI to decide whether to build graphics display functions
+ *   ( to avoid "D1 not defined in this context" errors when building for non-graphics version)
  * 
  * v2.0
  * o moved the eeprom support functions to bt_eepromlib
@@ -210,7 +214,7 @@
  * + Implemented buffer length checks on EEPROM input
  * 
  * v1.5
- * + declaring v1.4 complete
+ * + declaring v1.4 completeARDUINO_ESP8266_WEMOS_D1MINI
  * + added int parm_to_value(char *topic, bool *num_value) for SSR topic
  * + added #define GARAGE_REM for the new hardware configuration
  * + added handling for input of a DOOR status
@@ -336,7 +340,10 @@
 #include "Adafruit_BME680.h"
 #include <bt_mqttlib.h>
 #include <bt_eepromlib.h>
+
+#ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #include "display_parameters.h"
+#endif
 
 /*
  * ************** PICK WHICH SENSING HARDWARE ***************************
@@ -359,9 +366,9 @@
  * 
  */
 //#define CNC_REM
-//#define ENV_REM
+#define ENV_REM
 //#define GARAGE_REM
-#define TEST_REM
+//#define TEST_REM
 
 /********************* HARDWARE Connections ********************/
 /*
@@ -1583,6 +1590,13 @@ void setup() {
 
   Serial.begin(115200);  
   Serial.println("Starting ...");
+
+  #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
+    Serial.println("Board is ESP8266_WEMOS_D1MINI");
+  #else
+    Serial.println("Board is *NOT* ESP8266_WEMOS_D1MINI");
+  #endif
+
   
   /*
    * Setup the direction of the three hardwired 3.3V I/O pins (hardwired as above)
