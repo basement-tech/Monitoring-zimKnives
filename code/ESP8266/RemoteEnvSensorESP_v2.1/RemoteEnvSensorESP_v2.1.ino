@@ -195,6 +195,10 @@
  * o added/updated/fixed support for ":" in json string
  * o using ARDUINO_ESP8266_WEMOS_D1MINI to decide whether to build graphics display functions
  *   ( to avoid "D1 not defined in this context" errors when building for non-graphics version)
+ * o added flag to determine whether the timestamp should be sent
+ *   (for display only devices which do not collect data, don't want to publish the timestamp)
+ * o added #defines for the sense of WIFI LED since all hardware was not built the same
+ *   (tested on ENV only at this point)
  * 
  * v2.0
  * o moved the eeprom support functions to bt_eepromlib
@@ -571,6 +575,9 @@ void init_pins()  {
 //#define BME680         1  // temp, hum, pressure, voc
 //#define MCP23017       1  // additional 16 gpio pins on separate chip
 #define GFX_DISP         1  // graphics touchscreen
+//#define SEND_TSTAMP      1  // pseudo hardware to control whether to send timestamp
+//#define WIFI_LED_CON     LOW // the value of the WIFI_LED when successfully connected
+//#define WIFI_LED_DIS     HIGH  // value of the WIFI_LED when successfully *not* connected
 
 
 #endif
@@ -588,6 +595,9 @@ void init_pins()  {
 //#define ESTOP          1  // is there an estop status wire connected
 //#define MOM_SWITCH_P   1
 //#define MCP23017       1  // additional 16 gpio pins on separate chip
+#define SEND_TSTAMP      1  // pseudo hardware to control whether to send timestamp
+#define WIFI_LED_CON     HIGH // value of the WIFI_LED when successfully connected
+#define WIFI_LED_DIS     LOW  // value of the WIFI_LED when successfully *not* connected
 
 #endif
 
@@ -605,6 +615,9 @@ void init_pins()  {
 #define ESTOP            1  // is there an estop status wire connected
 #define MOM_SWITCH_P     1
 //#define MCP23017       1  // additional 16 gpio pins on separate chip
+#define SEND_TSTAMP      1  // pseudo hardware to control whether to send timestamp
+#define WIFI_LED_CON     LOW // the value of the WIFI_LED when successfully connected
+#define WIFI_LED_DIS     HIGH  // value of the WIFI_LED when successfully *not* connected
 
 #endif
 
@@ -625,6 +638,9 @@ void init_pins()  {
 #define GDOOR_SENSE      1  // garage door sense switch
 #define BME680           1  // temp, hum, pressure, voc
 //#define MCP23017       1  // additional 16 gpio pins on separate chip
+#define SEND_TSTAMP      1  // pseudo hardware to control whether to send timestamp
+#define WIFI_LED_CON     LOW // the value of the WIFI_LED when successfully connected
+#define WIFI_LED_DIS     HIGH  // value of the WIFI_LED when successfully *not* connected
 
 #endif
 
@@ -1750,9 +1766,9 @@ void setup() {
    * Setup the LED for indicating Wifi connection and
    * connect to WiFi access point.
    */
-  digitalWrite(WIFI_LED, HIGH);
+  digitalWrite(WIFI_LED, WIFI_LED_DIS);
   if(LWifiConnect(true) == WL_CONNECTED)
-    digitalWrite(WIFI_LED, LOW);
+    digitalWrite(WIFI_LED, WIFI_LED_CON);
 
   // Start the NTP client
   timeClient.begin();
@@ -2134,7 +2150,7 @@ void loop() {
      * (just try again if the RST_ON_WIFI_FAIL is not set)
      */
     if(WiFi.status() == WL_CONNECTED)  {
-      digitalWrite(WIFI_LED, LOW);
+      digitalWrite(WIFI_LED, WIFI_LED_CON);
       wifi_fails = RST_ON_WIFI_COUNT;  /* reset the fail counter */
       wifi_rssi = WiFi.RSSI();
       Serial.print("Wifi signal strength = ");
@@ -2142,7 +2158,7 @@ void loop() {
       Serial.println("dBm");
     }
     else {
-      digitalWrite(WIFI_LED, HIGH);  /* indicate that the wifi is down */
+      digitalWrite(WIFI_LED, WIFI_LED_DIS);  /* indicate that the wifi is down */
       
       /*
        * if the reset-on-wifi-fail is enabled, 
@@ -2351,8 +2367,9 @@ void loop() {
       /*
        * Prepare and send the sample time ... do this first to be close to the acquition.
        */
-      timestamp = timeClient.getFormattedTime();
-  
+      timestamp = timeClient.getFormattedTime();  // leave this outside the ifdef incase it will be used
+
+#ifdef SEND_TSTAMP  
       enviro = json_sample("tstamp", timestamp, pmon_config->mqtt_location, timestamp);
     #ifdef L_DEBUG_MSG
       Serial.print("Sending sample time: ");
@@ -2367,6 +2384,9 @@ void loop() {
         Serial.println("Publish failed")
       #endif
         ;
+
+#endif
+
 
       /*
        * prepare and send the WIFI RSSI (i.e. signal strength)
