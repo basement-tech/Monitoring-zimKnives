@@ -1,0 +1,2346 @@
+[
+    {
+        "id": "d6560657.ba1e1",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "fdb0edd5.5be038",
+        "type": "tab",
+        "label": "Flow 2",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "89d02876.8e2188",
+        "type": "ui_group",
+        "z": "",
+        "name": "Garage Env",
+        "tab": "94ff058b.1c8fc",
+        "order": null,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "75dc08bf.37009",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "",
+        "broker": "192.168.1.24",
+        "port": "52065",
+        "clientid": "",
+        "usetls": false,
+        "compatmode": true,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "53ab1848.17d428",
+        "type": "ui_group",
+        "z": "",
+        "name": "zimKnives",
+        "tab": null,
+        "order": null,
+        "disp": true,
+        "width": "6"
+    },
+    {
+        "id": "24677589.f2415a",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "",
+        "broker": "192.168.1.24",
+        "port": "52065",
+        "clientid": "",
+        "usetls": false,
+        "compatmode": true,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "f6ff5973.daff4",
+        "type": "ui_tab",
+        "z": "d6560657.ba1e1",
+        "name": "CNCRouter",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "fd77de20.b0f42",
+        "type": "ui_group",
+        "z": "",
+        "name": "zimKnives",
+        "tab": "",
+        "disp": true,
+        "width": "6"
+    },
+    {
+        "id": "e2b72946.467bd8",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "",
+        "broker": "192.168.1.24",
+        "port": "52065",
+        "clientid": "",
+        "usetls": false,
+        "compatmode": true,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "f2732b61.2d80b",
+        "type": "ui_group",
+        "z": "",
+        "name": "zimKnives",
+        "tab": "",
+        "disp": true,
+        "width": "6"
+    },
+    {
+        "id": "65350aaf.5747e4",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-light",
+            "lightTheme": {
+                "default": "#0094CE",
+                "baseColor": "#0094CE",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": true,
+                "reset": false
+            },
+            "darkTheme": {
+                "default": "#097479",
+                "baseColor": "#097479",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": false
+            },
+            "customTheme": {
+                "name": "Untitled Theme 1",
+                "default": "#4B7930",
+                "baseColor": "#4B7930",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+            },
+            "themeState": {
+                "base-color": {
+                    "default": "#0094CE",
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-titlebar-backgroundColor": {
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-backgroundColor": {
+                    "value": "#fafafa",
+                    "edited": false
+                },
+                "page-sidebar-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-textColor": {
+                    "value": "#1bbfff",
+                    "edited": false
+                },
+                "group-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "widget-textColor": {
+                    "value": "#111111",
+                    "edited": false
+                },
+                "widget-backgroundColor": {
+                    "value": "#0094ce",
+                    "edited": false
+                },
+                "widget-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "base-font": {
+                    "value": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+                }
+            },
+            "angularTheme": {
+                "primary": "indigo",
+                "accents": "blue",
+                "warn": "red",
+                "background": "grey"
+            }
+        },
+        "site": {
+            "name": "Node-RED-zimKnives",
+            "hideToolbar": "false",
+            "allowSwipe": "false",
+            "lockMenu": "false",
+            "allowTempTheme": "true",
+            "dateFormat": "DD/MM/YYYY",
+            "sizes": {
+                "sx": 48,
+                "sy": 48,
+                "gx": 6,
+                "gy": 6,
+                "cx": 6,
+                "cy": 6,
+                "px": 0,
+                "py": 0
+            }
+        }
+    },
+    {
+        "id": "99578dcf.a295f",
+        "type": "ui_group",
+        "z": "",
+        "name": "zimKnives",
+        "tab": "",
+        "disp": true,
+        "width": "6"
+    },
+    {
+        "id": "50f81d04.f7e31c",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "",
+        "broker": "192.168.1.24",
+        "port": "52065",
+        "clientid": "",
+        "usetls": false,
+        "compatmode": true,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "72686144.a41408",
+        "type": "ui_group",
+        "z": "",
+        "name": "zimKnives",
+        "tab": "ce9daa67.935538",
+        "disp": true,
+        "width": "6"
+    },
+    {
+        "id": "d93657a0.0e5148",
+        "type": "ui_group",
+        "z": "",
+        "name": "Environmental",
+        "tab": "f6ff5973.daff4",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "d8b7443.bc854b8",
+        "type": "ui_group",
+        "z": "",
+        "name": "Control+Status",
+        "tab": "f6ff5973.daff4",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "c823da6.3367d28",
+        "type": "ui_tab",
+        "z": "",
+        "name": "Shop",
+        "icon": "dashboard",
+        "order": 2,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "108921e1.244656",
+        "type": "ui_group",
+        "z": "",
+        "name": "Environmental",
+        "tab": "c823da6.3367d28",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "e0a26638.e5fca",
+        "type": "ui_group",
+        "z": "",
+        "name": "Control+Status",
+        "tab": "c823da6.3367d28",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "be323148.af8558",
+        "type": "ui_spacer",
+        "name": "spacer",
+        "group": "e0a26638.e5fca",
+        "order": 5,
+        "width": 1,
+        "height": 1
+    },
+    {
+        "id": "529534fd.064cb4",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "zimKnives-Secured",
+        "broker": "192.168.1.24",
+        "port": "52068",
+        "tls": "f6692b2d.e69578",
+        "clientid": "",
+        "usetls": true,
+        "compatmode": false,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "f6692b2d.e69578",
+        "type": "tls-config",
+        "z": "",
+        "name": "PiTLSConfig",
+        "cert": "/home/pi/.node-red/certs/client.crt",
+        "key": "/home/pi/.node-red/certs/client.key",
+        "ca": "/home/pi/.node-red/certs/ca.crt",
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "technoshop-pi",
+        "verifyservercert": true
+    },
+    {
+        "id": "94ff058b.1c8fc",
+        "type": "ui_tab",
+        "z": "",
+        "name": "Home",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "58a5de64.a3e4",
+        "type": "ui_group",
+        "z": "",
+        "name": "Control",
+        "tab": "94ff058b.1c8fc",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "39551e19.ef7aba",
+        "type": "ui_spacer",
+        "name": "spacer",
+        "group": "58a5de64.a3e4",
+        "order": 2,
+        "width": 1,
+        "height": 1
+    },
+    {
+        "id": "f33edb75.c9383",
+        "type": "ui_group",
+        "z": "",
+        "name": "System",
+        "tab": "94ff058b.1c8fc",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "b5610b3.de4f0f8",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Light On",
+        "group": "e0a26638.e5fca",
+        "order": 6,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "Light On",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "#12FA03",
+        "icon": "",
+        "payload": "True",
+        "payloadType": "str",
+        "topic": "",
+        "x": 80,
+        "y": 180,
+        "wires": [
+            [
+                "8869bc3f.577ec8",
+                "44d8fff5.c4d1a8"
+            ]
+        ]
+    },
+    {
+        "id": "2da06b9e.82a3dc",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Light Off",
+        "group": "e0a26638.e5fca",
+        "order": 7,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "Light Off",
+        "tooltip": "",
+        "color": "#E9967A",
+        "bgcolor": "#FA2F03",
+        "icon": "",
+        "payload": "False",
+        "payloadType": "str",
+        "topic": "",
+        "x": 85,
+        "y": 230,
+        "wires": [
+            [
+                "8869bc3f.577ec8"
+            ]
+        ]
+    },
+    {
+        "id": "8869bc3f.577ec8",
+        "type": "mqtt out",
+        "z": "d6560657.ba1e1",
+        "name": "Light",
+        "topic": "zk-env/o_light",
+        "qos": "",
+        "retain": "",
+        "broker": "e2b72946.467bd8",
+        "x": 260,
+        "y": 201,
+        "wires": []
+    },
+    {
+        "id": "ab5448a5.b7c25",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-env/temp",
+        "qos": "2",
+        "broker": "e2b72946.467bd8",
+        "x": 538,
+        "y": 290,
+        "wires": [
+            [
+                "c2be3c24.fc0748"
+            ]
+        ]
+    },
+    {
+        "id": "bfbaf29b.01c948",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 771,
+        "y": 289,
+        "wires": []
+    },
+    {
+        "id": "c2be3c24.fc0748",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 766,
+        "y": 367,
+        "wires": [
+            [
+                "b0752659.b49688",
+                "bfbaf29b.01c948"
+            ]
+        ]
+    },
+    {
+        "id": "b0752659.b49688",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Temp_degF",
+        "func": "\nmsg.payload = (msg.payload.temp.value*1.8)+32\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 933,
+        "y": 369,
+        "wires": [
+            [
+                "9751135c.c4fc3"
+            ]
+        ]
+    },
+    {
+        "id": "9751135c.c4fc3",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "108921e1.244656",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Temp",
+        "label": "deg F",
+        "format": "{{value | number:0}}",
+        "min": "-20",
+        "max": "120",
+        "colors": [
+            "#ff001a",
+            "#0bfa00",
+            "#f0e114"
+        ],
+        "seg1": "32",
+        "seg2": "85",
+        "x": 1073.5,
+        "y": 372,
+        "wires": []
+    },
+    {
+        "id": "da8e569b.4fb54",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-env/humidity",
+        "qos": "2",
+        "broker": "e2b72946.467bd8",
+        "x": 543,
+        "y": 451,
+        "wires": [
+            [
+                "314d2ea0.937142",
+                "2a42521f.6dd576"
+            ]
+        ]
+    },
+    {
+        "id": "314d2ea0.937142",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 787,
+        "y": 453,
+        "wires": []
+    },
+    {
+        "id": "2a42521f.6dd576",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 763,
+        "y": 521,
+        "wires": [
+            [
+                "c95aed1f.40975"
+            ]
+        ]
+    },
+    {
+        "id": "c95aed1f.40975",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Humidity",
+        "func": "\nmsg.payload = msg.payload.humidity.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 923.5,
+        "y": 552,
+        "wires": [
+            [
+                "1c1d95d.dc592ea"
+            ]
+        ]
+    },
+    {
+        "id": "b02f1d7d.96c478",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-env/gasco",
+        "qos": "2",
+        "broker": "e2b72946.467bd8",
+        "x": 558,
+        "y": 667,
+        "wires": [
+            [
+                "7866a5cd.7f61c4",
+                "b8173f2f.592b78"
+            ]
+        ]
+    },
+    {
+        "id": "7866a5cd.7f61c4",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 734,
+        "y": 664,
+        "wires": [
+            [
+                "722afb4.ed96004"
+            ]
+        ]
+    },
+    {
+        "id": "722afb4.ed96004",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "GasCO",
+        "func": "\nmsg.payload = msg.payload.gasco.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 918,
+        "y": 664,
+        "wires": [
+            [
+                "bcf36152.b8405"
+            ]
+        ]
+    },
+    {
+        "id": "b8173f2f.592b78",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "payload",
+        "x": 933.5,
+        "y": 732,
+        "wires": []
+    },
+    {
+        "id": "860412c2.2ad6d8",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-env/motion",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "e2b72946.467bd8",
+        "x": 531.5,
+        "y": 77,
+        "wires": [
+            [
+                "721ee42a.47923c"
+            ]
+        ]
+    },
+    {
+        "id": "44d8fff5.c4d1a8",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 360.5,
+        "y": 135,
+        "wires": []
+    },
+    {
+        "id": "e291bdc7.4a2418",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Auto",
+        "group": "e0a26638.e5fca",
+        "order": 2,
+        "width": "1",
+        "height": "1",
+        "passthru": false,
+        "label": "Auto",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "{{msg.payload}}",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "x": 1069.5,
+        "y": 280,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a323ee7b.0ed6d8",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "TFtoOO",
+        "func": "if(msg.payload == \"True\")\n   msg.payload = \"#12FA03\"\nelse if(msg.payload == \"False\")\n   msg.payload = \"#FA2F03\"\nelse\n   msg.payload = \"Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 706.5,
+        "y": 205,
+        "wires": [
+            [
+                "9b9ea88f.1a6c98",
+                "e291bdc7.4a2418"
+            ]
+        ]
+    },
+    {
+        "id": "9b9ea88f.1a6c98",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": true,
+        "console": "false",
+        "complete": "false",
+        "x": 935.5,
+        "y": 209,
+        "wires": []
+    },
+    {
+        "id": "47afb0fb.3422e",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "auto",
+        "topic": "zk-env/auto",
+        "qos": "2",
+        "broker": "e2b72946.467bd8",
+        "x": 519.5,
+        "y": 206,
+        "wires": [
+            [
+                "a323ee7b.0ed6d8"
+            ]
+        ]
+    },
+    {
+        "id": "f570fd35.f96648",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Auto On",
+        "group": "e0a26638.e5fca",
+        "order": 8,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "Auto On",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "#12FA03",
+        "icon": "",
+        "payload": "True",
+        "payloadType": "str",
+        "topic": "",
+        "x": 83.5,
+        "y": 336,
+        "wires": [
+            [
+                "ca73be4e.2f51"
+            ]
+        ]
+    },
+    {
+        "id": "28074f13.0b2ab8",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Auto Off",
+        "group": "e0a26638.e5fca",
+        "order": 9,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "Auto Off",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "#FA2F03",
+        "icon": "",
+        "payload": "False",
+        "payloadType": "str",
+        "topic": "",
+        "x": 81.5,
+        "y": 403,
+        "wires": [
+            [
+                "ca73be4e.2f51"
+            ]
+        ]
+    },
+    {
+        "id": "ca73be4e.2f51",
+        "type": "mqtt out",
+        "z": "d6560657.ba1e1",
+        "name": "Auto",
+        "topic": "zk-env/o_auto",
+        "qos": "",
+        "retain": "",
+        "broker": "e2b72946.467bd8",
+        "x": 250.5,
+        "y": 367,
+        "wires": []
+    },
+    {
+        "id": "3ae0ce1d.18b60a",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "light",
+        "topic": "zk-env/light",
+        "qos": "2",
+        "broker": "e2b72946.467bd8",
+        "x": 516.5,
+        "y": 135,
+        "wires": [
+            [
+                "c823867a.d99ed8"
+            ]
+        ]
+    },
+    {
+        "id": "c823867a.d99ed8",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "TFtoOO",
+        "func": "if(msg.payload == \"True\")\n   msg.payload = \"#12FA03\"\nelse if(msg.payload == \"False\")\n   msg.payload = \"#FA2F03\"\nelse\n   msg.payload = \"Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 698.5,
+        "y": 136,
+        "wires": [
+            [
+                "79c620b7.68dc7"
+            ]
+        ]
+    },
+    {
+        "id": "79c620b7.68dc7",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Light",
+        "group": "e0a26638.e5fca",
+        "order": 3,
+        "width": "1",
+        "height": "1",
+        "passthru": false,
+        "label": "Light",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "{{msg.payload}}",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "x": 1064,
+        "y": 135,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "721ee42a.47923c",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "TFtoOO",
+        "func": "if(msg.payload == \"True\")\n   msg.payload = \"#FA2F03\"\nelse if(msg.payload == \"False\")\n   msg.payload = \"#12FA03\"\nelse\n   msg.payload = \"Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 702,
+        "y": 76,
+        "wires": [
+            [
+                "a2b5d233.9b3cf8"
+            ]
+        ]
+    },
+    {
+        "id": "a2b5d233.9b3cf8",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Motion",
+        "group": "e0a26638.e5fca",
+        "order": 4,
+        "width": "1",
+        "height": "1",
+        "passthru": false,
+        "label": "Motion",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "{{msg.payload}}",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "x": 1054,
+        "y": 74,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "1c1d95d.dc592ea",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "108921e1.244656",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Humidity",
+        "label": "%",
+        "format": "{{value | number:0}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "x": 1103.5,
+        "y": 552,
+        "wires": []
+    },
+    {
+        "id": "bcf36152.b8405",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "Carbon Monoxide",
+        "group": "108921e1.244656",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Carbon Monoxide",
+        "label": "PPM",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "15",
+        "seg2": "35",
+        "x": 1136,
+        "y": 663,
+        "wires": []
+    },
+    {
+        "id": "c4791c3d.8641a8",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-cncrtr/temp",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "e2b72946.467bd8",
+        "x": 610,
+        "y": 1100,
+        "wires": [
+            [
+                "e4bf2ff0.238c6"
+            ]
+        ]
+    },
+    {
+        "id": "c92c4645.b01f9",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 843,
+        "y": 1099,
+        "wires": []
+    },
+    {
+        "id": "e4bf2ff0.238c6",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 858,
+        "y": 1177,
+        "wires": [
+            [
+                "deafcdda.10e838",
+                "c92c4645.b01f9"
+            ]
+        ]
+    },
+    {
+        "id": "deafcdda.10e838",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Temp_degF",
+        "func": "\nmsg.payload = (msg.payload.temp.value*1.8)+32\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 1025,
+        "y": 1179,
+        "wires": [
+            [
+                "8f34819d.21a928"
+            ]
+        ]
+    },
+    {
+        "id": "82bf613.88b2b2",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-cncrtr/humidity",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "e2b72946.467bd8",
+        "x": 640,
+        "y": 1240,
+        "wires": [
+            [
+                "31240752.864918",
+                "210f50ad.8b30c"
+            ]
+        ]
+    },
+    {
+        "id": "31240752.864918",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": true,
+        "console": "false",
+        "complete": "false",
+        "x": 884,
+        "y": 1242,
+        "wires": []
+    },
+    {
+        "id": "210f50ad.8b30c",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 860,
+        "y": 1310,
+        "wires": [
+            [
+                "87545b7b.98f788"
+            ]
+        ]
+    },
+    {
+        "id": "87545b7b.98f788",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Humidity",
+        "func": "\nmsg.payload = msg.payload.humidity.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 1020.5,
+        "y": 1341,
+        "wires": [
+            [
+                "3d4a48f.4f09438"
+            ]
+        ]
+    },
+    {
+        "id": "3d4a48f.4f09438",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "d93657a0.0e5148",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Router_Humidity",
+        "label": "%",
+        "format": "{{value | number:0}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "x": 1230.5,
+        "y": 1341,
+        "wires": []
+    },
+    {
+        "id": "4edce07f.a22448",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-cncrtr/therm0",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "e2b72946.467bd8",
+        "x": 640,
+        "y": 1420,
+        "wires": [
+            [
+                "15dc496b.1a3737"
+            ]
+        ]
+    },
+    {
+        "id": "2361e204.68b63e",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 863,
+        "y": 1419,
+        "wires": []
+    },
+    {
+        "id": "15dc496b.1a3737",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 858,
+        "y": 1497,
+        "wires": [
+            [
+                "eeaa843d.33781",
+                "2361e204.68b63e"
+            ]
+        ]
+    },
+    {
+        "id": "eeaa843d.33781",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Temp_degF",
+        "func": "\nmsg.payload = (msg.payload.therm0.value*1.8)+32\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 1025,
+        "y": 1499,
+        "wires": [
+            [
+                "877ddfa9.68de6"
+            ]
+        ]
+    },
+    {
+        "id": "877ddfa9.68de6",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "d93657a0.0e5148",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Router_Heatsink0",
+        "label": "deg F",
+        "format": "{{value | number:0}}",
+        "min": "-20",
+        "max": "120",
+        "colors": [
+            "#ff001a",
+            "#0bfa00",
+            "#f0e114"
+        ],
+        "seg1": "32",
+        "seg2": "85",
+        "x": 1205.5,
+        "y": 1502,
+        "wires": []
+    },
+    {
+        "id": "79e4e9d3.684428",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-cncrtr/therm1",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "e2b72946.467bd8",
+        "x": 660,
+        "y": 1580,
+        "wires": [
+            [
+                "8500d952.656318"
+            ]
+        ]
+    },
+    {
+        "id": "9ba2701.567849",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 883,
+        "y": 1579,
+        "wires": []
+    },
+    {
+        "id": "8500d952.656318",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 878,
+        "y": 1657,
+        "wires": [
+            [
+                "fbc6c357.134238",
+                "9ba2701.567849"
+            ]
+        ]
+    },
+    {
+        "id": "fbc6c357.134238",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Temp_degF",
+        "func": "\nmsg.payload = (msg.payload.therm1.value*1.8)+32\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 1045,
+        "y": 1659,
+        "wires": [
+            [
+                "a016bbe2.a08308"
+            ]
+        ]
+    },
+    {
+        "id": "a016bbe2.a08308",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "d93657a0.0e5148",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Router_Heatsink1",
+        "label": "deg F",
+        "format": "{{value | number:0}}",
+        "min": "-20",
+        "max": "120",
+        "colors": [
+            "#ff001a",
+            "#0bfa00",
+            "#f0e114"
+        ],
+        "seg1": "32",
+        "seg2": "85",
+        "x": 1230,
+        "y": 1660,
+        "wires": []
+    },
+    {
+        "id": "6cc13d88.b102dc",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "zk-env/gaspr",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "50f81d04.f7e31c",
+        "x": 570,
+        "y": 820,
+        "wires": [
+            [
+                "b7ca1257.e057e",
+                "7d719b74.43d60c"
+            ]
+        ]
+    },
+    {
+        "id": "b7ca1257.e057e",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 746,
+        "y": 817,
+        "wires": [
+            [
+                "770f7141.edae6"
+            ]
+        ]
+    },
+    {
+        "id": "770f7141.edae6",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "GasPR",
+        "func": "\nmsg.payload = msg.payload.gaspr.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 930,
+        "y": 817,
+        "wires": [
+            [
+                "94538e81.6c9ae8"
+            ]
+        ]
+    },
+    {
+        "id": "94538e81.6c9ae8",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "Propane",
+        "group": "108921e1.244656",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Propane",
+        "label": "PPM",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "21000",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "2000",
+        "seg2": "5000",
+        "x": 1118,
+        "y": 816,
+        "wires": []
+    },
+    {
+        "id": "7d719b74.43d60c",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "payload",
+        "x": 945.5,
+        "y": 885,
+        "wires": []
+    },
+    {
+        "id": "a8f39a3b.6d5d8",
+        "type": "ui_text",
+        "z": "d6560657.ba1e1",
+        "group": "e0a26638.e5fca",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Sample Time",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 1129.5,
+        "y": 969,
+        "wires": []
+    },
+    {
+        "id": "4b73866.0e16af8",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "console": "false",
+        "complete": "false",
+        "x": 974,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "56ccec4a.3619bc",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "SampleTime",
+        "func": "\nmsg.payload = msg.payload.tstamp.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 948,
+        "y": 980,
+        "wires": [
+            [
+                "a8f39a3b.6d5d8"
+            ]
+        ]
+    },
+    {
+        "id": "7dbbe431.88b49c",
+        "type": "json",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "pretty": false,
+        "x": 753,
+        "y": 981,
+        "wires": [
+            [
+                "56ccec4a.3619bc",
+                "4b73866.0e16af8"
+            ]
+        ]
+    },
+    {
+        "id": "31d4cf8.2a348b",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Sample Time",
+        "topic": "zk-env/time",
+        "qos": "2",
+        "broker": "50f81d04.f7e31c",
+        "x": 590,
+        "y": 980,
+        "wires": [
+            [
+                "7dbbe431.88b49c"
+            ]
+        ]
+    },
+    {
+        "id": "a4139d84.6545b",
+        "type": "ui_dropdown",
+        "z": "d6560657.ba1e1",
+        "name": "NeoPixel",
+        "label": "NeoPixel Mode",
+        "tooltip": "",
+        "place": "Select option",
+        "group": "d8b7443.bc854b8",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "options": [
+            {
+                "label": "Current-Color",
+                "value": "{ \"neopxl_mode\":{ \"value\": 1}}",
+                "type": "str"
+            },
+            {
+                "label": "Current-VU",
+                "value": "{ \"neopxl_mode\":{ \"value\": 2}}",
+                "type": "str"
+            },
+            {
+                "label": "OFF",
+                "value": "{ \"neopxl_mode\":{ \"value\": 0}}",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "msg.neopxl_mode",
+        "x": 100,
+        "y": 1100,
+        "wires": [
+            [
+                "92a07c95.fb9108",
+                "49456565.a39364"
+            ]
+        ]
+    },
+    {
+        "id": "92a07c95.fb9108",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 340,
+        "y": 1120,
+        "wires": []
+    },
+    {
+        "id": "49456565.a39364",
+        "type": "mqtt out",
+        "z": "d6560657.ba1e1",
+        "name": "NeoPixel_Mode",
+        "topic": "zk-cncrtr/neopxl_mode",
+        "qos": "",
+        "retain": "",
+        "broker": "75dc08bf.37009",
+        "x": 340,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "8f34819d.21a928",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "d93657a0.0e5148",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Router_Temp",
+        "label": "degF",
+        "format": "{{value | number:0}}",
+        "min": 0,
+        "max": "120",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "80",
+        "seg2": "100",
+        "x": 1220,
+        "y": 1180,
+        "wires": []
+    },
+    {
+        "id": "bc9edf7f.82f7b8",
+        "type": "ui_slider",
+        "z": "d6560657.ba1e1",
+        "name": "NeoRange",
+        "label": "NeoRange",
+        "tooltip": "",
+        "group": "d8b7443.bc854b8",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "outs": "end",
+        "topic": "msg.neopxl_range",
+        "min": "5",
+        "max": "20",
+        "step": 1,
+        "x": 110,
+        "y": 1440,
+        "wires": [
+            [
+                "1dc19482.f55cf3"
+            ]
+        ]
+    },
+    {
+        "id": "229065ac.de188a",
+        "type": "mqtt out",
+        "z": "d6560657.ba1e1",
+        "name": "NeoPixel_Range",
+        "topic": "zk-cncrtr/neopxl_range",
+        "qos": "",
+        "retain": "",
+        "broker": "75dc08bf.37009",
+        "x": 470,
+        "y": 1380,
+        "wires": []
+    },
+    {
+        "id": "5f56d54c.092cbc",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 490,
+        "y": 1500,
+        "wires": []
+    },
+    {
+        "id": "1dc19482.f55cf3",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "range_to_json",
+        "func": "var num = msg.payload\nvar numst = num.toString()\nmsg.payload = '{\"neopxl_range\":{\"value\":'+numst+'}}'\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 280,
+        "y": 1500,
+        "wires": [
+            [
+                "5f56d54c.092cbc",
+                "229065ac.de188a"
+            ]
+        ]
+    },
+    {
+        "id": "9517f1c5.04a4c8",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "neopxl_range_init",
+        "topic": "zk-cncrtr/neopxl_range_init",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 130,
+        "y": 1280,
+        "wires": [
+            [
+                "c45e144e.3d2c78"
+            ]
+        ]
+    },
+    {
+        "id": "a0821b6.f1d08e8",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 410,
+        "y": 1240,
+        "wires": []
+    },
+    {
+        "id": "c45e144e.3d2c78",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "neopxl_range",
+        "func": "msg.payload = msg.payload.neopxl_color_max.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 140,
+        "y": 1340,
+        "wires": [
+            [
+                "bc9edf7f.82f7b8",
+                "a0821b6.f1d08e8"
+            ]
+        ]
+    },
+    {
+        "id": "e79c9291.ee1298",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Average Amps",
+        "topic": "zk-cncrtr/aamps",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 130,
+        "y": 1640,
+        "wires": [
+            [
+                "22a757aa.4bfa4"
+            ]
+        ]
+    },
+    {
+        "id": "22a757aa.4bfa4",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Average Amps",
+        "func": "msg.payload = msg.payload.Aamps.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 320,
+        "y": 1640,
+        "wires": [
+            [
+                "fc25ebb7.4b228"
+            ]
+        ]
+    },
+    {
+        "id": "fc25ebb7.4b228",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "Amps(avg)",
+        "group": "d8b7443.bc854b8",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Motor current (amps)",
+        "label": "amps",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "20",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "10",
+        "seg2": "15",
+        "x": 510,
+        "y": 1640,
+        "wires": []
+    },
+    {
+        "id": "ce5f90e6.43c928",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Estop",
+        "topic": "zk-cncrtr/estop",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 120,
+        "y": 1720,
+        "wires": [
+            [
+                "e49d4c55.1910f"
+            ]
+        ]
+    },
+    {
+        "id": "e49d4c55.1910f",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "estop",
+        "func": "\nif(msg.payload.estop.value == \"1\")\n   msg.payload = \"#FA2F03\"\nelse if(msg.payload.estop.value == \"0\")\n   msg.payload = \"#12FA03\"\nelse\n   msg.payload = \"Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 270,
+        "y": 1720,
+        "wires": [
+            [
+                "216269ec.181bde",
+                "adc2aa77.c0fb9"
+            ]
+        ]
+    },
+    {
+        "id": "216269ec.181bde",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "group": "d8b7443.bc854b8",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "ESTOP",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "{{msg.payload}}",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "x": 440,
+        "y": 1720,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "adc2aa77.c0fb9",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 440,
+        "y": 1800,
+        "wires": []
+    },
+    {
+        "id": "bffafee6.99e148",
+        "type": "comment",
+        "z": "d6560657.ba1e1",
+        "name": "For Init Only",
+        "info": "This value is sent once at in the setup() from the remote data acquisition module.  It sync's the remote with the ui",
+        "x": 110,
+        "y": 1180,
+        "wires": []
+    },
+    {
+        "id": "3f9f9230.eb6566",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "neopxl_mode_init",
+        "topic": "zk-cncrtr/neopxl_mode_init",
+        "qos": "2",
+        "datatype": "utf8",
+        "broker": "75dc08bf.37009",
+        "x": 120,
+        "y": 920,
+        "wires": [
+            [
+                "a170614c.501bd8",
+                "a4139d84.6545b"
+            ]
+        ]
+    },
+    {
+        "id": "a170614c.501bd8",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 570,
+        "y": 920,
+        "wires": []
+    },
+    {
+        "id": "1ab0d11.1e2caaf",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "CNC_Time",
+        "topic": "zk-cncrtr/time",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "529534fd.064cb4",
+        "x": 640,
+        "y": 1780,
+        "wires": [
+            [
+                "92fe5f77.5cefd8"
+            ]
+        ]
+    },
+    {
+        "id": "92fe5f77.5cefd8",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "CNC_Time",
+        "func": "msg.payload = msg.payload.tstamp.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 880,
+        "y": 1780,
+        "wires": [
+            [
+                "cd710a1c.f69e5"
+            ]
+        ]
+    },
+    {
+        "id": "cd710a1c.f69e5",
+        "type": "ui_text",
+        "z": "d6560657.ba1e1",
+        "group": "d8b7443.bc854b8",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "CNC_Time",
+        "label": "CNC Sample Time",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 1090,
+        "y": 1780,
+        "wires": []
+    },
+    {
+        "id": "29683169.6fa72e",
+        "type": "ui_switch",
+        "z": "d6560657.ba1e1",
+        "name": "SSR",
+        "label": "Party Lights",
+        "tooltip": "",
+        "group": "58a5de64.a3e4",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "decouple": "false",
+        "topic": "",
+        "style": "",
+        "onvalue": "{ \"ssr_state\": {\"value\": 1}}",
+        "onvalueType": "json",
+        "onicon": "",
+        "oncolor": "",
+        "offvalue": "{ \"ssr_state\": {\"value\": 0}}",
+        "offvalueType": "json",
+        "officon": "",
+        "offcolor": "",
+        "x": 110,
+        "y": 1960,
+        "wires": [
+            [
+                "c7871b1b.1f38b8",
+                "8b947888.66bc5"
+            ]
+        ]
+    },
+    {
+        "id": "8b947888.66bc5",
+        "type": "mqtt out",
+        "z": "d6560657.ba1e1",
+        "name": "SSR",
+        "topic": "bt-garage/ssr_state",
+        "qos": "",
+        "retain": "",
+        "broker": "75dc08bf.37009",
+        "x": 260,
+        "y": 1960,
+        "wires": []
+    },
+    {
+        "id": "c7871b1b.1f38b8",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 250,
+        "y": 1900,
+        "wires": []
+    },
+    {
+        "id": "ef120c93.bd6038",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Temp",
+        "topic": "bt-garage/temp",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 130,
+        "y": 2180,
+        "wires": [
+            [
+                "3981f104.f9f97e"
+            ]
+        ]
+    },
+    {
+        "id": "2db0b15d.93ac5e",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Humidity",
+        "topic": "bt-garage/humidity",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 140,
+        "y": 2260,
+        "wires": [
+            [
+                "2cdb6555.de7d02"
+            ]
+        ]
+    },
+    {
+        "id": "1bf5f407.edda34",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Door",
+        "topic": "bt-garage/grgdoor",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 130,
+        "y": 2340,
+        "wires": [
+            [
+                "f413b04.2f99b5",
+                "5dca0025.3f5248"
+            ]
+        ]
+    },
+    {
+        "id": "287b05e0.54406a",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 530,
+        "y": 2180,
+        "wires": []
+    },
+    {
+        "id": "3981f104.f9f97e",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "CtoF",
+        "func": "\nmsg.payload = (msg.payload.temp.value*1.8)+32\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 350,
+        "y": 2180,
+        "wires": [
+            [
+                "287b05e0.54406a",
+                "5e7a6671.ce5b5"
+            ]
+        ]
+    },
+    {
+        "id": "5e7a6671.ce5b5",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Temp",
+        "group": "89d02876.8e2188",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Garage Temp",
+        "label": "deg F",
+        "format": "{{value | number:0}}",
+        "min": 0,
+        "max": "120",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "80",
+        "seg2": "100",
+        "x": 550,
+        "y": 2140,
+        "wires": []
+    },
+    {
+        "id": "14070c0a.e37f1c",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Humidity",
+        "group": "89d02876.8e2188",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Garage Humidity",
+        "label": "%",
+        "format": "{{value | number:0}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "50",
+        "seg2": "65",
+        "x": 550,
+        "y": 2260,
+        "wires": []
+    },
+    {
+        "id": "2cdb6555.de7d02",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Humidity",
+        "func": "msg.payload = msg.payload.humidity.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 370,
+        "y": 2260,
+        "wires": [
+            [
+                "14070c0a.e37f1c"
+            ]
+        ]
+    },
+    {
+        "id": "fa184ffb.cbfd6",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 590,
+        "y": 2340,
+        "wires": []
+    },
+    {
+        "id": "761081db.783118",
+        "type": "ui_button",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Door",
+        "group": "58a5de64.a3e4",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "Garage Door (open=red)",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "{{msg.payload}}",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "x": 590,
+        "y": 2400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "f413b04.2f99b5",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Door Status",
+        "func": "if(msg.payload.gdoor_state.value == \"1\")\n   msg.payload = \"#FA2F03\"\nelse if(msg.payload.gdoor_state.value == \"0\")\n   msg.payload = \"#12FA03\"\nelse\n   msg.payload = \"Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 380,
+        "y": 2400,
+        "wires": [
+            [
+                "761081db.783118",
+                "fa184ffb.cbfd6"
+            ]
+        ]
+    },
+    {
+        "id": "8927092c.ec6208",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Sample Time",
+        "topic": "bt-garage/time",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 160,
+        "y": 2080,
+        "wires": [
+            [
+                "d9272507.d1a638",
+                "c85b1d05.5cd2b8"
+            ]
+        ]
+    },
+    {
+        "id": "d9272507.d1a638",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 360,
+        "y": 2040,
+        "wires": []
+    },
+    {
+        "id": "c85b1d05.5cd2b8",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Garage Sample Time",
+        "func": "msg.payload = msg.payload.tstamp.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 590,
+        "y": 2080,
+        "wires": [
+            [
+                "72fb4a08.09b42c"
+            ]
+        ]
+    },
+    {
+        "id": "72fb4a08.09b42c",
+        "type": "ui_text",
+        "z": "d6560657.ba1e1",
+        "group": "89d02876.8e2188",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Garage Sample Time",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 870,
+        "y": 2080,
+        "wires": []
+    },
+    {
+        "id": "53267afd.2832e4",
+        "type": "mqtt in",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "topic": "bt-garage/wifi_rssi",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "75dc08bf.37009",
+        "x": 150,
+        "y": 2560,
+        "wires": [
+            [
+                "839fe878.6d0f4"
+            ]
+        ]
+    },
+    {
+        "id": "839fe878.6d0f4",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "RSSI",
+        "func": "msg.payload = msg.payload.rssi.value\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 370,
+        "y": 2560,
+        "wires": [
+            [
+                "ea5bc679.a2d15"
+            ]
+        ]
+    },
+    {
+        "id": "ea5bc679.a2d15",
+        "type": "ui_gauge",
+        "z": "d6560657.ba1e1",
+        "name": "WIFI RSSI",
+        "group": "f33edb75.c9383",
+        "order": 0,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "WIFI RSSI",
+        "label": "dBm",
+        "format": "{{value}}",
+        "min": "-100",
+        "max": "10",
+        "colors": [
+            "#b52400",
+            "#e6e600",
+            "#3dca38"
+        ],
+        "seg1": "-70",
+        "seg2": "-50",
+        "x": 560,
+        "y": 2560,
+        "wires": []
+    },
+    {
+        "id": "56670c17.c4cd5c",
+        "type": "e-mail",
+        "z": "d6560657.ba1e1",
+        "server": "smtp.gmail.com",
+        "port": "465",
+        "secure": true,
+        "tls": true,
+        "name": "2624098283@vtext.com",
+        "dname": "Email djzman078",
+        "x": 910,
+        "y": 2380,
+        "wires": []
+    },
+    {
+        "id": "474799d2.a1fa5",
+        "type": "function",
+        "z": "d6560657.ba1e1",
+        "name": "Email Payload",
+        "func": "if(msg.payload.gdoor_state.value == \"1\") {\n   msg.payload = \"Door Changed State\"\n   msg.topic = \"Garage Door Opened\"\n   msg.from = \"Home\"\n}\nelse if(msg.payload.gdoor_state.value == \"0\")  {\n   msg.payload = \"Door Changed State\"\n   msg.topic = \"Garage Door Closed\"\n   msg.from = \"Home\"\n}\nelse\n   msg.payload = \"Door Error\"\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 660,
+        "y": 2460,
+        "wires": [
+            [
+                "c550963.6882768",
+                "56670c17.c4cd5c"
+            ]
+        ]
+    },
+    {
+        "id": "c550963.6882768",
+        "type": "debug",
+        "z": "d6560657.ba1e1",
+        "name": "",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "topic",
+        "targetType": "msg",
+        "x": 860,
+        "y": 2460,
+        "wires": []
+    },
+    {
+        "id": "5dca0025.3f5248",
+        "type": "rbe",
+        "z": "d6560657.ba1e1",
+        "name": "Watch for Garage Door Change",
+        "func": "rbe",
+        "gap": "",
+        "start": "",
+        "inout": "out",
+        "property": "payload.gdoor_state.value",
+        "x": 410,
+        "y": 2460,
+        "wires": [
+            [
+                "474799d2.a1fa5"
+            ]
+        ]
+    }
+]
